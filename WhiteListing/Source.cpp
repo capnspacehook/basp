@@ -28,8 +28,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	SecPolicy(argv[1],
-		SecOptions::BLACKLIST);
+	SecPolicy(argv[1], SecOptions::BLACKLIST);
 
 	GPForceUpdate();
 }
@@ -59,6 +58,8 @@ void GPForceUpdate() {
 	SecureZeroMemory(&si, sizeof(si));
 	si.cb = sizeof(si);
 	SecureZeroMemory(&pi, sizeof(pi));
+
+	cout << endl;
 
 	// start the program up
 	CreateProcess("C:\\Windows\\System32\\gpupdate.exe",   // the path

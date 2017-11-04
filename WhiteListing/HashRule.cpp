@@ -23,18 +23,18 @@
 using namespace std;
 using namespace AppSecPolicy;
 
-void HashRule::CreateNewHashRule(string fileName, SecOptions secOption)
+void HashRule::CreateNewHashRule(const string &fileName, 
+	const SecOptions &secOption, const long long &fileSize)
 {
+	itemSize = fileSize;
 	EnumFriendlyName(fileName);
 	EnumFileTime();
 	HashDigests(fileName);
 	CreateGUID();
 	WriteToRegistry(secOption);
-
-	friendlyName.clear();
 }
 
-void HashRule::EnumFileVersion(string fileName)
+void HashRule::EnumFileVersion(const string &fileName)
 {
 	//Code adapted from crashmstr at
 	//https://stackoverflow.com/questions/940707/how-do-i-programmatically-get-the-version-of-a-dll-or-exe-file
@@ -81,22 +81,33 @@ void HashRule::EnumFileVersion(string fileName)
 }
 
 //Generates FriendlyName, which is a collection of metadata from the file
-void HashRule::EnumFriendlyName(string fileName)
+void HashRule::EnumFriendlyName(const string &fileName)
 {
 	//Adapted from Henri Hein at
 	//http://www.codeguru.com/cpp/w-p/win32/versioning/article.php/c4539/Versioning-in-Windows.htm
 	
-	EnumItemSize(fileName);
-
 	LPCTSTR szFile = fileName.c_str();
 	DWORD dwLen, dwUseless;
 	LPTSTR lpVI = NULL;
-	UINT verMajor;
+	WORD* langInfo = NULL;
+	PUINT cbLang = 0;
+	bool validLang = true;
 
 	dwLen = GetFileVersionInfoSize(szFile, &dwUseless);
-	if (dwLen == 0)
+	if (dwLen != 0)
 	{
-		//if file has no metadata, use alternate method of generating FriendlyName
+		lpVI = (LPTSTR)GlobalAlloc(GPTR, dwLen);
+		if (lpVI)
+		{
+			GetFileVersionInfo((LPTSTR)szFile, NULL, dwLen, lpVI);
+
+			validLang = VerQueryValue(lpVI, TEXT("\\VarFileInfo\\Translation"),
+				(LPVOID*)&langInfo, cbLang);
+		}
+	}
+	//if file has no metadata, use alternate method of generating FriendlyName
+	if (dwLen == 0 || !validLang)
+	{
 		string originalName = fileName.substr(
 			fileName.rfind("\\") + 1,
 			fileName.length());
@@ -116,65 +127,32 @@ void HashRule::EnumFriendlyName(string fileName)
 	}
 	else
 	{
-		lpVI = (LPTSTR)GlobalAlloc(GPTR, dwLen);
-		if (lpVI)
+		EnumFileVersion(fileName);
+			
+		TCHAR tszVerStrName[128];
+		LPVOID lpt;
+		PUINT cbBufSize = 0;
+		string temp[6];
+
+		for (int i = 0; i < 5; i++)
 		{
-			EnumFileVersion(fileName);
-
-			DWORD dwBufSize;
-			VS_FIXEDFILEINFO* lpFFI;
-			BOOL bRet = FALSE;
-			WORD* langInfo;
-			PUINT cbLang = 0;
-			TCHAR tszVerStrName[128];
-			LPVOID lpt;
-			PUINT cbBufSize = 0;
-			string temp[6];
-
-			GetFileVersionInfo((LPTSTR)szFile, NULL, dwLen, lpVI);
-
-			if (VerQueryValue(lpVI, TEXT("\\"),
-				(LPVOID *)&lpFFI, (UINT *)&dwBufSize))
-			{
-				//We now have the VS_FIXEDFILEINFO in lpFFI
-				verMajor = HIWORD(lpFFI->dwFileVersionMS);
-			}
-
-			VerQueryValue(lpVI, TEXT("\\VarFileInfo\\Translation"),
-				(LPVOID*)&langInfo, cbLang);
-
-			for (int i = 0; i < 5; i++)
-			{
-				//Prepare the label to get the metadata types in fileProps
-				temp[i] = "\\StringFileInfo\\%04x%04x\\" + fileProps[i];
-				StringCchPrintf(tszVerStrName, STRSAFE_MAX_CCH,
-					TEXT(temp[i].c_str()),
-					langInfo[0], langInfo[1]);
-				//Get the string from the resource data
-				if (VerQueryValue(lpVI, tszVerStrName, &lpt, cbBufSize))
-					temp[i].assign((LPTSTR)lpt);    //*must* save this
-			}
-			//format FriendlyName
-			friendlyName = temp[0] + fileVersion;
-			for (int i = 1; i < 5; i++)
-				friendlyName += temp[i];
-
-			//Cleanup
-			GlobalFree((HGLOBAL)lpVI);
+			//Prepare the label to get the metadata types in fileProps
+			temp[i] = "\\StringFileInfo\\%04x%04x\\" + fileProps[i];
+			StringCchPrintf(tszVerStrName, STRSAFE_MAX_CCH,
+				TEXT(temp[i].c_str()),
+				langInfo[0], langInfo[1]);
+			//Get the string from the resource data
+			if (VerQueryValue(lpVI, tszVerStrName, &lpt, cbBufSize))
+				temp[i].assign((LPTSTR)lpt);    //*must* save this
 		}
+		//format FriendlyName
+		friendlyName = temp[0] + fileVersion;
+		for (int i = 1; i < 5; i++)
+			friendlyName += temp[i];
+
+		//Cleanup
+		GlobalFree((HGLOBAL)lpVI);
 	}
-}
-
-void HashRule::EnumItemSize(string fileName)
-{
-	WIN32_FIND_DATA data;
-	HANDLE h = FindFirstFile(fileName.c_str(), &data);
-	if (h == INVALID_HANDLE_VALUE)
-		//return;
-
-	FindClose(h);
-
-	itemSize = data.nFileSizeLow | (long long)data.nFileSizeHigh << 32;
 }
 
 //gets current time 
@@ -187,7 +165,7 @@ void HashRule::EnumFileTime()
 		(long long)currTime.dwHighDateTime << 32;
 }
 
-void HashRule::HashDigests(string fileName)
+void HashRule::HashDigests(const string &fileName)
 {
 	CryptoPP::Weak::MD5 md5Hash;
 	CryptoPP::SHA256 shaHash;
@@ -208,7 +186,7 @@ void HashRule::HashDigests(string fileName)
 }
 
 //converts string of hex into bytes
-inline vector<BYTE> HashRule::convertStrToByte(string str) noexcept
+inline vector<BYTE> HashRule::convertStrToByte(string &str) noexcept
 {
 	vector<BYTE> vec;
 	for (int i = 0; i < str.length(); i += 2)
@@ -224,7 +202,7 @@ inline vector<BYTE> HashRule::convertStrToByte(string str) noexcept
 	return vec;
 }
 
-void HashRule::CreateGUID()
+inline void HashRule::CreateGUID()
 {
 	//make new GUID in the small chance that CoCreateGuid fails
 	bool goodGUID;
@@ -233,7 +211,7 @@ void HashRule::CreateGUID()
 	} while (!goodGUID);
 }
 
-bool HashRule::MakeGUID()
+inline bool HashRule::MakeGUID()
 {
 	bool result;
 	GUID rGUID;
@@ -261,7 +239,7 @@ bool HashRule::MakeGUID()
 	return result;
 }
 
-void HashRule::WriteToRegistry(SecOptions policy) noexcept
+void HashRule::WriteToRegistry(const SecOptions &policy) const noexcept
 {
 	using namespace winreg;
 
@@ -290,7 +268,7 @@ void HashRule::WriteToRegistry(SecOptions policy) noexcept
 		hashRuleKey.SetBinaryValue("ItemData", itemData);
 		hashRuleKey.SetQwordValue("ItemSize", itemSize);
 		hashRuleKey.SetQwordValue("LastModified", lastModified);
-		hashRuleKey.SetDwordValue("SaferFlags", 0);
+		hashRuleKey.SetDwordValue("SaferFlags", 0);					//not used
 
 		hashRuleKey.Close();
 		hashRuleKey.Create(
@@ -300,8 +278,6 @@ void HashRule::WriteToRegistry(SecOptions policy) noexcept
 
 		hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);
 		hashRuleKey.SetBinaryValue("ItemData", sha256Hash);
-
-		hashRuleKey.Close();
 	}
 	catch (const RegException &e)
 	{

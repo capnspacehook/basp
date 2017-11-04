@@ -99,6 +99,7 @@
       <SDLCheck>true</SDLCheck>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -121,11 +122,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\WinReg\WinReg\WinReg\WinReg.hpp" />
     <ClInclude Include="AppSecPolicy.hpp" />
     <ClInclude Include="HashRule.hpp" />
-    <ClInclude Include="EnumTypes.h" />
     <ClInclude Include="SecPolicy.hpp" />
+    <ClInclude Include="WinReg.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="HashRule.cpp" />

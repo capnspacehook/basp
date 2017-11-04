@@ -9,24 +9,26 @@
 class HashRule
 {
 public:
-	HashRule() {}
+	HashRule() {};
 	HashRule(const std::string &fileName, 
-		const AppSecPolicy::SecOptions &secOption)
+		const AppSecPolicy::SecOptions &secOption,
+		const long long &fileSize)
 	{
-		CreateNewHashRule(fileName, secOption);
+		CreateNewHashRule(fileName, secOption, fileSize);
 	}
-	void CreateNewHashRule(std::string fileName, AppSecPolicy::SecOptions policy);
-	void EnumFileVersion(std::string fileName);
-	void EnumFriendlyName(std::string fileName);
-	void EnumItemSize(std::string fileName);
+	void CreateNewHashRule(const std::string &fileName, 
+		const AppSecPolicy::SecOptions &policy,
+		const long long& fileSize);
+	void EnumFileVersion(const std::string &fileName);
+	void EnumFriendlyName(const std::string &fileName);
 	void EnumFileTime();
-	void HashDigests(std::string fileName);
-	void CreateGUID();
-	void WriteToRegistry(AppSecPolicy::SecOptions policy) noexcept;
+	void HashDigests(const std::string &fileName);
+	inline void CreateGUID();
+	void WriteToRegistry(const AppSecPolicy::SecOptions &policy) const noexcept;
 	
 private:
-	bool MakeGUID();
-	inline std::vector<BYTE> convertStrToByte(std::string str) noexcept;
+	inline bool MakeGUID();
+	inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;
 
 	std::string guid;
 	std::string fileProps[5] = {
@@ -42,7 +44,6 @@ private:
 	std::vector<BYTE> itemData;
 	long long itemSize;
 	long long lastModified;
-	int saferFlags = 0;
 	int shaHashAlg = 32780;
 	std::vector<BYTE> sha256Hash;
 };

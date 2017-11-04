@@ -4,6 +4,7 @@
 
 #include <system_error>
 #include <filesystem>
+#include <iostream>
 #include <thread>
 #include <string>
 #include <vector>
@@ -25,17 +26,24 @@ public:
 	{
 		for (auto &t : threads)
 			t.join();
+
+		std::cout << "Created " << ruleCount << " hash rules" 
+			<< std::endl;
 	}
 
 	void EnumExeTypes() noexcept;
 	void EnumAttributes(const std::string&) noexcept;
-	void EnumDirContents(const fs::path&, const std::error_code&) noexcept;
-	void CheckValidType(const fs::path&) noexcept;
+	void EnumDirContents(const fs::path&, long long&) noexcept;
+	void CheckValidType(const fs::path&, const long long&) noexcept;
 private:
-	inline bool FindInStrIC(std::string, std::string) const noexcept;
-
+	int ruleCount = 0;
 	std::string filePath;
 	std::vector<std::thread> threads;
 	AppSecPolicy::SecOptions secOption;
-	std::vector<std::string> executableTypes;
+	std::vector<std::string> executableTypes = {
+		"ADE", "ADP", "BAS", "BAT", "BGI", "CHM", "CMD", "COM", "CPL", "CRT",
+		"DIAGCAB", "DLL", "EXE", "HLP", "HTA", "INF", "INS", "ISP", "JS", 
+		"JSE", "LNK", "MDB", "MDE", "MSC", "MSI", "MSP", "MST", "OCX", "PCD",
+		"PIF", "PS1", "PS2", "PSM", "REG", "SCR","SHS", "URL", "VB", 
+		"WSC", "XAML", "XBAP", "XPI" };
 };

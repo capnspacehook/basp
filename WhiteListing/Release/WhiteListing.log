@@ -1,18 +1,13 @@
 ﻿  HashRule.cpp
-HashRule.cpp(103): warning C4244: 'initializing': conversion from '__int64' to 'int', possible loss of data
-HashRule.cpp(214): warning C4018: '<': signed/unsigned mismatch
-HashRule.cpp(249): warning C4018: '<': signed/unsigned mismatch
-HashRule.cpp(252): warning C4242: '=': conversion from 'int' to 'char', possible loss of data
+HashRule.cpp(114): warning C4244: 'initializing': conversion from '__int64' to 'int', possible loss of data
+HashRule.cpp(192): warning C4018: '<': signed/unsigned mismatch
+HashRule.cpp(227): warning C4018: '<': signed/unsigned mismatch
+HashRule.cpp(230): warning C4242: '=': conversion from 'int' to 'char', possible loss of data
   SecPolicy.cpp
-SecPolicy.cpp(46): warning C4551: function call missing argument list
-SecPolicy.cpp(51): warning C4551: function call missing argument list
-SecPolicy.cpp(78): warning C4551: function call missing argument list
-SecPolicy.cpp(83): warning C4551: function call missing argument list
-SecPolicy.cpp(147): warning C4018: '<': signed/unsigned mismatch
   Source.cpp
   Generating code
-  5 of 1516 functions ( 0.3%) were compiled, the rest were copied from previous compilation.
+  4 of 1652 functions ( 0.2%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    19 functions had inline decision re-evaluated but remain unchanged
+    17 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
   WhiteListing.vcxproj -> C:\Users\root\Google Drive\College\Programming Fo Fun\Whitelisting\Release\WhiteListing.exe
