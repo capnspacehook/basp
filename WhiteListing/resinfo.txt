@@ -1,0 +1,7 @@
+The file contains the following resources:
+
+Type: 24
+	Name: 1
+		Language: 1033
+		hResInfo == d7f16048,  Size == 381
+

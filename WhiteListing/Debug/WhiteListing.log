@@ -1,0 +1,15 @@
+﻿  Source.cpp
+  SecPolicy.cpp
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\secpolicy.cpp(46): warning C4551: function call missing argument list
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\secpolicy.cpp(51): warning C4551: function call missing argument list
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\secpolicy.cpp(78): warning C4551: function call missing argument list
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\secpolicy.cpp(83): warning C4551: function call missing argument list
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\secpolicy.cpp(147): warning C4018: '<': signed/unsigned mismatch
+  HashRule.cpp
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\hashrule.cpp(103): warning C4244: 'initializing': conversion from '__int64' to 'int', possible loss of data
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\hashrule.cpp(214): warning C4018: '<': signed/unsigned mismatch
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\hashrule.cpp(249): warning C4018: '<': signed/unsigned mismatch
+c:\users\root\google drive\college\programming fo fun\whitelisting\whitelisting\hashrule.cpp(252): warning C4242: '=': conversion from 'int' to 'char', possible loss of data
+  Generating Code...
+  WhiteListing.vcxproj -> C:\Users\root\Google Drive\College\Programming Fo Fun\Whitelisting\Debug\WhiteListing.exe
+  WhiteListing.vcxproj -> C:\Users\root\Google Drive\College\Programming Fo Fun\Whitelisting\Debug\WhiteListing.pdb (Partial PDB)
