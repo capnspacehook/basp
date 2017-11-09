@@ -10,21 +10,22 @@ class HashRule
 {
 public:
 	HashRule() {};
-	HashRule(const std::string &fileName, 
-		const AppSecPolicy::SecOptions &secOption,
-		const long long &fileSize)
-	{
-		CreateNewHashRule(fileName, secOption, fileSize);
-	}
-	void CreateNewHashRule(const std::string &fileName, 
+	void CreateNewHashRule(const std::string &fileName,
 		const AppSecPolicy::SecOptions &policy,
 		const long long& fileSize);
+	void CreateTempHashRule(const std::string &fileName,
+		const AppSecPolicy::SecOptions &policy,
+		const long long& fileSize, std::string *subKey);
+
 	void EnumFileVersion(const std::string &fileName);
 	void EnumFriendlyName(const std::string &fileName);
 	void EnumFileTime();
 	void HashDigests(const std::string &fileName);
 	inline void CreateGUID();
-	void WriteToRegistry(const AppSecPolicy::SecOptions &policy) const noexcept;
+	void WriteToRegistry(const std::string &fileName, 
+		const AppSecPolicy::SecOptions &policy) noexcept;
+	void DeleteTempRule(const std::string *guid, 
+		const AppSecPolicy::SecOptions &policy) noexcept;
 	
 private:
 	inline bool MakeGUID();

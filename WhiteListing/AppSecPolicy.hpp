@@ -2,7 +2,5 @@
 
 namespace AppSecPolicy
 {
-	enum class SecOptions { WHITELIST, BLACKLIST };
-
-	enum class FileProps { DIRECTORY, ENCRYPTED, NORMAL };
+	enum class SecOptions { BLACKLIST, WHITELIST };
 }

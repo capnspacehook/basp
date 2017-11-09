@@ -15,6 +15,7 @@
 #include "Crypto++\md5.h"
 #include "Crypto++\sha.h"
 
+#include <exception>
 #include <string>
 #include <vector>
 
@@ -23,7 +24,7 @@
 using namespace std;
 using namespace AppSecPolicy;
 
-void HashRule::CreateNewHashRule(const string &fileName, 
+void HashRule::CreateNewHashRule(const string &fileName,
 	const SecOptions &secOption, const long long &fileSize)
 {
 	itemSize = fileSize;
@@ -31,7 +32,20 @@ void HashRule::CreateNewHashRule(const string &fileName,
 	EnumFileTime();
 	HashDigests(fileName);
 	CreateGUID();
-	WriteToRegistry(secOption);
+	WriteToRegistry(fileName, secOption);
+}
+
+//sets the 'subKey' parameter to the rule's guid
+void HashRule::CreateTempHashRule(const string &fileName,
+	const SecOptions &secOption, const long long &fileSize, string *subKey)
+{
+	itemSize = fileSize;
+	EnumFriendlyName(fileName);
+	EnumFileTime();
+	HashDigests(fileName);
+	CreateGUID();
+	WriteToRegistry(fileName, secOption);
+	*subKey = guid;
 }
 
 void HashRule::EnumFileVersion(const string &fileName)
@@ -143,7 +157,10 @@ void HashRule::EnumFriendlyName(const string &fileName)
 				langInfo[0], langInfo[1]);
 			//Get the string from the resource data
 			if (VerQueryValue(lpVI, tszVerStrName, &lpt, cbBufSize))
-				temp[i].assign((LPTSTR)lpt);    //*must* save this
+				temp[i] = (LPTSTR)lpt;
+			//if the file is missing certain metadata, skip it
+			else
+				temp[i] = "";
 		}
 		//format FriendlyName
 		friendlyName = temp[0] + fileVersion;
@@ -202,6 +219,7 @@ inline vector<BYTE> HashRule::convertStrToByte(string &str) noexcept
 	return vec;
 }
 
+//generates random GUID
 inline void HashRule::CreateGUID()
 {
 	//make new GUID in the small chance that CoCreateGuid fails
@@ -239,7 +257,9 @@ inline bool HashRule::MakeGUID()
 	return result;
 }
 
-void HashRule::WriteToRegistry(const SecOptions &policy) const noexcept
+//write the hash rule to the registry
+void HashRule::WriteToRegistry(const string &fileName,
+	const SecOptions &policy) noexcept
 {
 	using namespace winreg;
 
@@ -247,14 +267,14 @@ void HashRule::WriteToRegistry(const SecOptions &policy) const noexcept
 	{
 		string ruleType;
 		string policyPath =
-			"\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
+			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
 
 		if (policy == SecOptions::BLACKLIST)
 			ruleType = "\\0\\Hashes\\";
 		else
 			ruleType = "\\262144\\Hashes\\";
 
-		policyPath = "SOFTWARE" + policyPath + ruleType + guid;
+		policyPath += ruleType + guid;
 
 		RegKey hashRuleKey(
 			HKEY_LOCAL_MACHINE,
@@ -262,7 +282,7 @@ void HashRule::WriteToRegistry(const SecOptions &policy) const noexcept
 			KEY_WRITE
 		);
 
-		hashRuleKey.SetStringValue("Description", "");
+		hashRuleKey.SetStringValue("Description", fileName);
 		hashRuleKey.SetStringValue("FriendlyName", friendlyName);
 		hashRuleKey.SetDwordValue("HashAlg", hashAlg);
 		hashRuleKey.SetBinaryValue("ItemData", itemData);
@@ -280,6 +300,50 @@ void HashRule::WriteToRegistry(const SecOptions &policy) const noexcept
 		hashRuleKey.SetBinaryValue("ItemData", sha256Hash);
 	}
 	catch (const RegException &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (const exception &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (...)
+	{
+		cout << "Unknown exception" << endl;
+	}
+}
+
+void HashRule::DeleteTempRule(const string *guid, const SecOptions &policy) noexcept
+{
+	using namespace winreg;
+
+	try
+	{
+		string ruleType;
+		string policyPath =
+			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
+
+		if (policy == SecOptions::BLACKLIST)
+			ruleType = "\\0\\Hashes\\";
+		else
+			ruleType = "\\262144\\Hashes\\";
+
+		policyPath += ruleType;
+
+		RegKey tempKey(
+			HKEY_LOCAL_MACHINE,
+			policyPath,
+			DELETE
+			);
+
+		tempKey.DeleteKey(*guid + "\\SHA256", KEY_WOW64_32KEY);
+		tempKey.DeleteKey(*guid, KEY_WOW64_32KEY);
+	}
+	catch (const RegException &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (const exception &e)
 	{
 		cout << e.what() << endl;
 	}
