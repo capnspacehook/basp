@@ -17,19 +17,22 @@ namespace fs = std::experimental::filesystem;
 void CheckElevated();
 inline void PrintInvalidMsg(const string&);
 inline bool ValidFile(const string&);
-bool CheckDirConflicts(const vector<string>&);
-void GPUpdate();
+bool CheckDirConflicts(vector<string>&);
 
 int main(int argc, char *argv[])
 {
 	CheckElevated();
 
-	string args;
+	/*SecPolicy s;
+	s.EnumLoadedDLLs("c:\\users\\root\\downloads\\putty.exe");
+	system("pause");*/
+
+	string fullArgs;
 	bool validOp = false;
 	bool tempRules = false;
 	string programName = argv[0];
 	vector<string> baseOptions = {
-		"-b", "-w" , "-t", "-td", "-d", "/?" };
+		"-b", "-w" , "-t", "-td", "-l", "/?" };
 	vector<string> extndOptions = {
 		"-e", "--admin" };
 	
@@ -41,14 +44,26 @@ int main(int argc, char *argv[])
 	if (argc < 3)
 		PrintInvalidMsg(programName);
 
-	//build up 'args' to equal single string of entire argument
-	args = programName;
+	//build up 'fullArgs' to equal single string of entire argument
+	string tempStr;
+	fullArgs = programName;
+	vector <string> args;
+	regex fourSlashes("\\\\");
 	for (int i = 1; i < argc; i++)
-		args += " " + (string)argv[i] + " ";
+	{
+		tempStr = argv[i];
+		regex_replace(tempStr, fourSlashes, "\\");
+
+		if (tempStr.back() == '\\')
+			tempStr.pop_back();
+
+		args.emplace_back(tempStr);
+		fullArgs += " " + tempStr + " ";
+	}
 
 	//loop through all options 
 	for (const auto &op : baseOptions)
-		if (!args.find(programName + " " + op + " "))
+		if (!fullArgs.find(programName + " " + op + " "))
 			validOp = true;
 
 	if (!validOp)
@@ -63,19 +78,15 @@ int main(int argc, char *argv[])
 		//if user passed in one option and one file
 		if (argc == 3)
 		{
-			//foward slashes are escaped, so the compiler interprets this to "\\\\"
-			regex fourSlashes("\\\\\\\\");
-			string ruleFile = regex_replace(argv[2], fourSlashes, "\\");
+			if (argv[1] == baseOptions[0] && ValidFile(args[1]))
+				policy.CreatePolicy(args[1], SecOptions::BLACKLIST);
 
-			if (argv[1] == baseOptions[0] && ValidFile(ruleFile))
-				policy.CreatePolicy(ruleFile, SecOptions::BLACKLIST);
+			else if (argv[1] == baseOptions[1] && ValidFile(args[1]))
+				policy.CreatePolicy(args[1], SecOptions::WHITELIST);
 
-			else if (argv[1] == baseOptions[1] && ValidFile(ruleFile))
-				policy.CreatePolicy(ruleFile, SecOptions::WHITELIST);
-
-			else if (argv[1] == baseOptions[2] && ValidFile(ruleFile))
+			else if (argv[1] == baseOptions[2] && ValidFile(args[1]))
 			{
-				auto exeFile = fs::path(ruleFile);
+				auto exeFile = fs::path(args[1]);
 				if (!fs::is_regular_file(exeFile))
 				{
 					cout << "\nFile must be executable";
@@ -88,11 +99,11 @@ int main(int argc, char *argv[])
 				}
 			}
 
-			else if (argv[1] == baseOptions[3] && ValidFile(ruleFile))
+			else if (argv[1] == baseOptions[3] && ValidFile(args[1]))
 			{
 				//we need to make sure parent directory is valid, and that
 				//the file passed in is an executable
-				auto exeFile = fs::path(ruleFile);
+				auto exeFile = fs::path(args[1]);
 				string parentDir = exeFile.parent_path().string();
 				if (!ValidFile(parentDir))
 				{
@@ -125,15 +136,10 @@ int main(int argc, char *argv[])
 		{
 			int count = 0;
 			vector<string> fileArgs;
-			regex fourSlashes("\\\\\\\\");
 			for (int i = 2; i < argc; i++)
 			{
 				if (ValidFile(argv[i]))
-					fileArgs.emplace_back(
-						regex_replace(
-							argv[i], 
-							fourSlashes, 
-							"\\"));
+					fileArgs.emplace_back(argv[i]);
 
 				else
 					count++;
@@ -153,7 +159,7 @@ int main(int argc, char *argv[])
 				}
 				else
 				{
-					cout << "File arguments conflict; Please enter files/dirs that "
+					cout << "\nFile arguments conflict; Please enter files/dirs that "
 						<< "do not contain other files/dirs entered";
 					PrintInvalidMsg(programName);
 				}
@@ -161,19 +167,23 @@ int main(int argc, char *argv[])
 
 			else if (argv[3] == extndOptions[0])
 			{
+				if (!fs::is_directory(fileArgs[0]))
+				{
+					cout << "If you wish to temporarily run a single file, please "
+						<< "specify only one file and omit the -e option" << endl;
+					PrintInvalidMsg(programName);
+				}
 				tempRules = true;
 				policy.TempRun(fileArgs[0], fileArgs[1]);
 			}
 
 			else
 			{
-				cout << "Invalid args";
+				cout << "\nInvalid args";
 				PrintInvalidMsg(programName);
 			}
 		}
 	}
-	if (!tempRules)
-		GPUpdate();
 }
 
 void CheckElevated()
@@ -205,10 +215,10 @@ inline void PrintInvalidMsg(const string &programName)
 		<< "-b\t\t" << "Disallow file(s)\n"
 		<< "-w\t\t" << "Allow file(s)\n"
 		<< "-t\t\t" << "Run a program without creating an allow rule for it\n"
-		<< "-td\t\t" << "Temporarily whitelist the file and all the files in it's directory\n"
-		<< "Advanced options:\n"
 		<< "-e\t\t" << "If used with -t, specifies which program to execute after the files\n"
-		<< "\t\tin the dir specified after -t are temorarily whitelisted\n\n";
+		<< "\t\tin the dir specified after -t are temorarily whitelisted\n"
+		<< "-td\t\t" << "Temporarily whitelist the file and all the files in it's directory\n"
+		<< "Advanced options:\n\n";
 
 	exit(-1);
 }
@@ -218,76 +228,35 @@ inline bool ValidFile(const string& str)
 	return fs::exists(str);
 }
 
-bool CheckDirConflicts(const vector<string> &files)
+bool CheckDirConflicts(vector<string> &files)
 {
 	bool noConflicts = true;
 	vector<fs::path> paths;
-	for (int i = 0; i < files.size(); i++)
-		paths.emplace_back(files[i]);
+	for (const auto &file : files)
+			paths.emplace_back(file);
 
 	sort(paths.begin(), paths.end(),
 		[](fs::path p1, fs::path p2) 
 	{ return p1.string().length() < p2.string().length(); });
 
 	fs::path temp;
-	for (int i = 0; i < paths.size(); i++)
+	for (int i = 1; i < paths.size(); i++)
 	{
+		temp = paths[i];
+		while (paths[i].root_path() != temp.parent_path())
+		{
+			if (paths[0] == temp.parent_path())
+			{
+				noConflicts = false;
+				break;
+			}
+			else
+				temp = temp.parent_path();
+		}
+				
 		if (!noConflicts)
 			break;
-
-		for (int j = 0; j < paths.size(); j++)
-		{
-			if (j == i)
-				continue;
-			else
-			{
-				temp = paths[j];
-				while (paths[j].root_path() != temp.parent_path())
-				{
-					if (paths[i] == temp.parent_path())
-					{
-						noConflicts = false;
-						break;
-					}
-					else
-						temp = temp.parent_path();
-				}
-				
-				if (!noConflicts)
-					break;
-			}
-		}
 	}
 	
 	return noConflicts;
-}
-
-//initiate a Group Policy Update after we're done
-void GPUpdate() {
-	// additional information
-	STARTUPINFO si;
-	PROCESS_INFORMATION pi;
-	SecureZeroMemory(&si, sizeof(si));
-	si.cb = sizeof(si);
-	SecureZeroMemory(&pi, sizeof(pi));
-
-	cout << endl;
-
-	// start the program up
-	CreateProcess("C:\\Windows\\System32\\gpupdate.exe",   // the path
-		" /target:computer",        // Command line
-		NULL,           // Process handle not inheritable
-		NULL,           // Thread handle not inheritable
-		FALSE,          // Set handle inheritance to FALSE
-		0,              // No creation flags
-		NULL,           // Use parent's environment block
-		NULL,           // Use parent's starting directory 
-		&si,            // Pointer to STARTUPINFO structure
-		&pi             // Pointer to PROCESS_INFORMATION structure (removed extra parentheses)
-	);
-
-	Sleep(7500);
-	// Close process and thread handles. 
-	CloseHandle(pi.hProcess);
-	CloseHandle(pi.hThread);
 }

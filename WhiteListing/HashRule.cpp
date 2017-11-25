@@ -1,6 +1,6 @@
+#include "AppSecPolicy.hpp"
 #include "HashRule.hpp"
 #include "WinReg.hpp"
-#include "AppSecPolicy.hpp"
 
 #include "Windows.h"
 #include "Strsafe.h"
@@ -24,19 +24,16 @@
 using namespace std;
 using namespace AppSecPolicy;
 
-void HashRule::CreateNewHashRule(const string &fileName,
-	const SecOptions &secOption, const long long &fileSize)
-{
-	itemSize = fileSize;
-	EnumFriendlyName(fileName);
-	EnumFileTime();
-	HashDigests(fileName);
-	CreateGUID();
-	WriteToRegistry(fileName, secOption);
-}
+//initialize fileProps
+const string HashRule::fileProps[5] = {
+	"OriginalFilename",
+	"InternalName",
+	"FileDescription",
+	"ProductName",
+	"CompanyName" };
 
 //sets the 'subKey' parameter to the rule's guid
-void HashRule::CreateTempHashRule(const string &fileName,
+void HashRule::CreateNewHashRule(const string &fileName,
 	const SecOptions &secOption, const long long &fileSize, string *subKey)
 {
 	itemSize = fileSize;
@@ -122,6 +119,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 	//if file has no metadata, use alternate method of generating FriendlyName
 	if (dwLen == 0 || !validLang)
 	{
+		//get size on disk
 		string originalName = fileName.substr(
 			fileName.rfind("\\") + 1,
 			fileName.length());
@@ -130,12 +128,14 @@ void HashRule::EnumFriendlyName(const string &fileName)
 		WIN32_FIND_DATA data;
 		HANDLE h = FindFirstFile(fileName.c_str(), &data);
 		
-		SYSTEMTIME sysTime;
-		FileTimeToSystemTime(&data.ftLastWriteTime, &sysTime);
-		string lastModified = to_string(sysTime.wMonth) + "/"
-			+ to_string(sysTime.wDay) + "/" + to_string(sysTime.wYear)
-			+ " " + to_string(sysTime.wHour - 4) + ":" 
-			+ to_string(sysTime.wMinute) + ":" + to_string(sysTime.wSecond);
+		//get last write time in the local time zone
+		SYSTEMTIME sysTimeUTC, sysTimeLocal;
+		FileTimeToSystemTime(&data.ftLastWriteTime, &sysTimeUTC);
+		SystemTimeToTzSpecificLocalTime(NULL, &sysTimeUTC, &sysTimeLocal);
+		string lastModified = to_string(sysTimeLocal.wMonth) + "/"
+			+ to_string(sysTimeLocal.wDay) + "/" + to_string(sysTimeLocal.wYear)
+			+ " " + to_string(sysTimeLocal.wHour) + ":"
+			+ to_string(sysTimeLocal.wMinute) + ":" + to_string(sysTimeLocal.wSecond);
 
 		friendlyName = originalName + to_string(sizeOnDisk) + "  KB" + lastModified;
 	}
@@ -173,7 +173,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 }
 
 //gets current time 
-void HashRule::EnumFileTime()
+inline void HashRule::EnumFileTime()
 {
 	FILETIME currTime;
 	GetSystemTimeAsFileTime(&currTime);
@@ -184,18 +184,20 @@ void HashRule::EnumFileTime()
 
 void HashRule::HashDigests(const string &fileName)
 {
-	CryptoPP::Weak::MD5 md5Hash;
-	CryptoPP::SHA256 shaHash;
+	using namespace CryptoPP;
+
+	Weak::MD5 md5Hash;
+	SHA256 shaHash;
 	string md5Digest;
 	string shaDigest;
 
-	CryptoPP::FileSource(
-		fileName.c_str(), true, new CryptoPP::HashFilter(
-			md5Hash, new CryptoPP::HexEncoder(new CryptoPP::StringSink(md5Digest))));
+	FileSource(
+		fileName.c_str(), true, new HashFilter(
+			md5Hash, new HexEncoder(new StringSink(md5Digest))));
 
-	CryptoPP::FileSource(
-		fileName.c_str(), true, new CryptoPP::HashFilter(
-			shaHash, new CryptoPP::HexEncoder(new CryptoPP::StringSink(shaDigest))));
+	FileSource(
+		fileName.c_str(), true, new HashFilter(
+			shaHash, new HexEncoder(new StringSink(shaDigest))));
 
 	//convert string to format that can be loaded into registry
 	itemData = move(convertStrToByte(md5Digest));
@@ -259,7 +261,7 @@ inline bool HashRule::MakeGUID()
 
 //write the hash rule to the registry
 void HashRule::WriteToRegistry(const string &fileName,
-	const SecOptions &policy) noexcept
+	const SecOptions &policy)
 {
 	using namespace winreg;
 
@@ -313,7 +315,7 @@ void HashRule::WriteToRegistry(const string &fileName,
 	}
 }
 
-void HashRule::DeleteTempRule(const string *guid, const SecOptions &policy) noexcept
+void HashRule::RemoveRule(const string *guid, const SecOptions &policy)
 {
 	using namespace winreg;
 

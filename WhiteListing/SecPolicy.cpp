@@ -2,14 +2,17 @@
 #include "SecPolicy.hpp"
 #include "HashRule.hpp"
 #include "WinReg.hpp"
+#include "Windows.h"
 
 #include <filesystem>
 #include <exception>
 #include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <utility>
+#include <chrono>
 #include <thread>
 #include <string>
-#include <cctype>
 #include <vector>
 
 using namespace std;
@@ -17,36 +20,36 @@ using namespace AppSecPolicy;
 namespace fs = std::experimental::filesystem;
 
 //create hash rules recursively in 'path'
-void SecPolicy::CreatePolicy(const string &path, const SecOptions &op) noexcept
+void SecPolicy::CreatePolicy(const string &path, const SecOptions &op, 
+	RuleType rType)
 {
 	secOption = op;
-	EnumExeTypes();
+	ruleType = rType;
 	EnumAttributes(path);
 }
 
 //overload that creates hash rules for each of the files in the vector 'paths'
-void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOptions &op) noexcept
+void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOptions &op,
+	RuleType rType)
 {
 	secOption = op;
-	EnumExeTypes();
+	ruleType = rType;
 
 	fs::path pathName;
 	for (const auto &path : paths)
 	{
 		pathName.assign(path);
 		EnumAttributes(path);
-		cout << "Finished creating hash rules for "
-			<< pathName << endl << endl;
 	}
 }
 
 //create a whitelisting rule, execute the file passed in, and delete the rule
-void SecPolicy::TempRun(const string &path) noexcept
+void SecPolicy::TempRun(const string &path) 
 {
 	try
 	{
 		tempRuleCreation = true;
-		auto file = fs::path(path);
+		fs::path file = fs::path(path);
 
 		long long size = fs::file_size(file);
 		if (size > 0)
@@ -54,37 +57,43 @@ void SecPolicy::TempRun(const string &path) noexcept
 			//create temporary hash rule
 			string subKey;
 			HashRule tempRule;
-			tempRule.CreateTempHashRule(path, SecOptions::WHITELIST, size, &subKey);
+			tempRule.CreateNewHashRule(path, SecOptions::WHITELIST, size, &subKey);
+			ApplyChanges();
 
 			ruleCount++;
-			cout << "\nCreated temporary allow rule for " << file.string()
+			cout << "Created temporary allow rule for " << file.string()
 				<< ". Executing file now...\n\n";
 
 			// start the program up
 			STARTUPINFO si;
 			PROCESS_INFORMATION pi;
+
 			SecureZeroMemory(&si, sizeof(si));
-			si.cb = sizeof(si);
 			SecureZeroMemory(&pi, sizeof(pi));
 
-			CreateProcess(path.c_str(),
+			si.cb = sizeof(si);
+			bool procCreated = CreateProcess(
 				NULL,
+				(char*) file.string().c_str(),
 				NULL,
 				NULL,
 				FALSE,
-				0,
 				NULL,
 				NULL,
+				(char*) file.parent_path().string().c_str(),
 				&si,
-				&pi
-			);
+				&pi);
+
+			if (!procCreated)
+			{
+				cerr << "CreateProcess error: " << GetLastError() << endl;
+			}
 				
 			Sleep(1000);
-			// Close process and thread handles. 
 			CloseHandle(pi.hProcess);
 			CloseHandle(pi.hThread);
 
-			tempRule.DeleteTempRule(&subKey, SecOptions::WHITELIST);
+			tempRule.RemoveRule(&subKey, SecOptions::WHITELIST);
 			cout << "Temporary rule deleted" << endl;
 		}
 		else
@@ -109,7 +118,7 @@ void SecPolicy::TempRun(const string &path) noexcept
 }
 
 //overload that temporaily whitelists 'dir', and executes 'file'
-void SecPolicy::TempRun(const string &dir, const string &file) noexcept
+void SecPolicy::TempRun(const string &dir, const string &file) 
 {
 	try
 	{
@@ -119,10 +128,12 @@ void SecPolicy::TempRun(const string &dir, const string &file) noexcept
 		tempRuleCreation = true;
 		CreatePolicy(dir, SecOptions::WHITELIST);
 		
-		//wait for threads to finish before trying to delete the rules 
-		//they may or may not be done creating
+		//wait for hash creation threads to finish before trying 
+		//to delete the rules they may or may not be finished
 		for (auto &t : threads)
 			t.join();
+
+		ApplyChanges();
 
 		cout << "\nCreated temporary allow rules in " << tempDir.string()
 			<< ". Executing " << exeFile.string() << " now...\n\n";
@@ -130,21 +141,28 @@ void SecPolicy::TempRun(const string &dir, const string &file) noexcept
 		// start the program up
 		STARTUPINFO si;
 		PROCESS_INFORMATION pi;
+
 		SecureZeroMemory(&si, sizeof(si));
-		si.cb = sizeof(si);
 		SecureZeroMemory(&pi, sizeof(pi));
 
-		CreateProcess(file.c_str(),
+		si.cb = sizeof(si);
+		bool procCreated = CreateProcess(
 			NULL,
+			(char*) exeFile.string().c_str(),
 			NULL,
 			NULL,
 			FALSE,
-			0,
 			NULL,
 			NULL,
+			(char*) exeFile.parent_path().string().c_str(),
 			&si,
-			&pi
-		);
+			&pi);
+
+		if (!procCreated)
+		{
+			cerr << "CreateProcess error: " << GetLastError() << endl;
+			return;
+		}
 
 		Sleep(1000);
 		// Close process and thread handles. 
@@ -153,44 +171,174 @@ void SecPolicy::TempRun(const string &dir, const string &file) noexcept
 
 		//delete temporary rules in parallel
 		threads.clear();
-		for (const auto &tempRuleID : GUIDs)
+		for (const auto &tempRuleID : guids)
 			threads.emplace_back(
-				&HashRule::DeleteTempRule,
+				&HashRule::RemoveRule,
 				HashRule(),
-				tempRuleID,
+				get<RULE_GUID>(tempRuleID),
 				SecOptions::WHITELIST);
 	}
 	catch (const fs::filesystem_error &e)
 	{
-		cout << e.what() << endl;
+		cerr << e.what() << endl;
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cerr << e.what() << endl;
 	}
 	catch (...)
 	{
-		cout << "Unknown exception" << endl;
+		cerr << "Unknown exception" << endl;
 	}
 }
 
-//gets the types specified in the registry that Windows
-//will treat as executable files for software policy purposes
-//if a file extension isn't on the list returned a file of 
-//it's type won't get blacklisted/whitelisted
-void SecPolicy::EnumExeTypes() noexcept
+void SecPolicy::EnumLoadedDLLs(const string &exeFile)
+{
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
+	DEBUG_EVENT debugEvent;
+	fs::path exePath(exeFile);
+
+	SecureZeroMemory(&si, sizeof(si));
+	SecureZeroMemory(&pi, sizeof(pi));
+
+	// Create target process
+	si.cb = sizeof(si);
+	bool procCreated = CreateProcess(
+		NULL,
+		(char*) exeFile.c_str(),
+		NULL,
+		NULL,
+		TRUE,
+		DEBUG_PROCESS,
+		NULL,
+		(char*) exePath.parent_path().string().c_str(),
+		&si,
+		&pi);
+
+	if (!procCreated)
+	{
+		cerr << "CreateProcess error: " << GetLastError() << endl;
+		return;
+	}
+
+	DebugSetProcessKillOnExit(TRUE);
+	DebugActiveProcess(pi.dwProcessId);
+
+	char dllPath[MAX_PATH];
+	while (true)
+	{
+		if (!WaitForDebugEvent(&debugEvent, dllWaitSecs * 1000))
+			break;
+
+		if (debugEvent.dwDebugEventCode == LOAD_DLL_DEBUG_EVENT)
+		{
+			GetFinalPathNameByHandle(
+				debugEvent.u.LoadDll.hFile, dllPath, MAX_PATH, FILE_NAME_OPENED);
+
+			cout << "New DLL found: " << dllPath << endl;
+
+			CloseHandle(debugEvent.u.LoadDll.hFile);
+		}
+		else if (debugEvent.dwDebugEventCode == EXCEPTION_DEBUG_EVENT)
+			if (debugEvent.u.Exception.ExceptionRecord.ExceptionFlags != 0)
+			{
+				cerr << "Fatal exception thrown" << endl;
+				break;
+			}
+
+		ContinueDebugEvent(debugEvent.dwProcessId,
+			debugEvent.dwThreadId,
+			DBG_CONTINUE);
+	}
+
+	DebugActiveProcessStop(pi.dwProcessId);
+	TerminateProcess(pi.hProcess, 0);
+
+	CloseHandle(pi.hProcess);
+	CloseHandle(pi.hThread);
+}
+
+bool SecPolicy::SetPrivileges(const string& privName, const bool& enablePriv)
+{
+	HANDLE tokenH;
+	HANDLE localProc = GetCurrentProcess();
+	if (!OpenProcessToken(localProc, TOKEN_ADJUST_PRIVILEGES, &tokenH))
+	{
+		cerr << "OpenProcessToken error: " << GetLastError();
+		return false;
+	}
+
+	TOKEN_PRIVILEGES tp;
+	LUID luid;
+
+	if (!LookupPrivilegeValue(
+		NULL,            // lookup privilege on local system
+		privName.c_str(),   // privilege to lookup 
+		&luid))        // receives LUID of privilege
+	{
+		cerr << "LookupPrivilegeValue error: " << GetLastError() << endl;
+		return false;
+	}
+
+	tp.PrivilegeCount = 1;
+	tp.Privileges[0].Luid = luid;
+	if (enablePriv)
+		tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+	else
+		tp.Privileges[0].Attributes = 0;
+
+	// Enable the privilege or disable all privileges.
+
+	if (!AdjustTokenPrivileges(
+		tokenH,
+		FALSE,
+		&tp,
+		sizeof(TOKEN_PRIVILEGES),
+		(PTOKEN_PRIVILEGES)NULL,
+		(PDWORD)NULL))
+	{
+		cerr << "AdjustTokenPrivileges error: " << GetLastError() << endl;
+		return false;
+	}
+
+	if (GetLastError() == ERROR_NOT_ALL_ASSIGNED)
+
+	{
+		cerr << "The token does not have the specified privilege." << endl;
+		return false;
+	}
+
+	return true;
+}
+
+//makes sure all the nessesary settings are in place to apply a SRP policy,
+//if a computer has never had policy applied before it will be missing
+//some of these settings. Also check if values in registry are what they should be
+void SecPolicy::CheckGlobalSettings() const
 {
 	using namespace winreg;
 	try 
 	{
-		RegKey policyOptions(
+		RegKey policySettings(
 			HKEY_LOCAL_MACHINE,
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
 			KEY_READ | KEY_WRITE);
 
+		vector<pair<string, DWORD>> keys = policySettings.EnumValues();
+
+		if (keys.size() < 5)
+		{
+			policySettings.SetDwordValue("AuthenticodeEnabled", 0);
+			policySettings.SetDwordValue("DefaultLevel", 262144);
+			policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+			policySettings.SetDwordValue("PolicyScope", 0);
+			policySettings.SetDwordValue("TransparentEnabled", 1);
+		}
+
 		//if what's in the registry differs from what we have, update the registry
-		if (executableTypes != policyOptions.GetMultiStringValue("ExecutableTypes"))
-			policyOptions.SetMultiStringValue("ExecutableTypes", executableTypes);
+		if (executableTypes != policySettings.GetMultiStringValue("ExecutableTypes"))
+			policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
 	}
 	catch (const RegException &e)
 	{
@@ -208,7 +356,7 @@ void SecPolicy::EnumExeTypes() noexcept
 
 //detirmine whether file passed to constructor is a 
 //regular file or directory and process respectively
-void SecPolicy::EnumAttributes(const string &fileName) noexcept
+void SecPolicy::EnumAttributes(const string &fileName) 
 {
 	try
 	{
@@ -227,7 +375,7 @@ void SecPolicy::EnumAttributes(const string &fileName) noexcept
 					: action = "blacklisting";
 
 				cout << "Temporaily " << action << " files in "
-					<< initialFile.string() << endl;
+					<< initialFile.string()  << "..." << endl;
 			}
 			else
 			{
@@ -235,19 +383,13 @@ void SecPolicy::EnumAttributes(const string &fileName) noexcept
 					: action = "Blacklisting";
 
 				cout << action << " files in "
-					<< initialFile.string() << endl;
+					<< initialFile.string() << "..." << endl;
 			}
 			
 			EnumDirContents(initialFile, fileSize);
 		}
 		else
 		{
-			if (tempRuleCreation)
-			{
-				cout << "If you wish to temporarily run a single file, please "
-					<< "specify only one file and omit the -e option" << endl;
-				exit(-1);
-			}
 			fileSize = fs::file_size(initialFile);
 			if (fileSize && fs::is_regular_file(initialFile))
 			{
@@ -278,7 +420,7 @@ void SecPolicy::EnumAttributes(const string &fileName) noexcept
 }
 
 //recursively go through directory 
-void SecPolicy::EnumDirContents(const fs::path& dir, long long &fileSize) noexcept
+void SecPolicy::EnumDirContents(const fs::path& dir, long long &fileSize) 
 {
 	try
 	{
@@ -316,7 +458,7 @@ void SecPolicy::EnumDirContents(const fs::path& dir, long long &fileSize) noexce
 //checks whether file is a valid type as detirmined by the list 
 //in the member variable executableTypes and if it is, start creating
 //a new hash rule for the file in a new thread
-void SecPolicy::CheckValidType(const fs::path &file, const long long &fileSize) noexcept
+void SecPolicy::CheckValidType(const fs::path &file, const long long &fileSize) 
 {
 	try
 	{
@@ -330,39 +472,112 @@ void SecPolicy::CheckValidType(const fs::path &file, const long long &fileSize) 
 				extension.begin(), toupper);
 
 			//check if the file is of one of the executable types 
-			for (int i = 0; i < executableTypes.size(); i++)
+			if (binary_search(
+				executableTypes.cbegin(), 
+				executableTypes.cend(), 
+				extension))
 			{
-				if (extension == executableTypes[i])
-				{
-					/*if (i > 0)
-						swap(executableTypes[i - 1], executableTypes[i]);*/
-
-					ruleCount++;
-					if (tempRuleCreation)
-					{
-						GUIDs.emplace_back(new string);
-						threads.emplace_back(
-							&HashRule::CreateTempHashRule,
-							HashRule(),
-							file.string(),
-							secOption,
-							fileSize,
-							GUIDs.back());
-					}
-					else
-						threads.emplace_back(
-							&HashRule::CreateNewHashRule,
-							HashRule(),
-							file.string(),
-							secOption,
-							fileSize);
-
-					break;
-				}
+				ruleCount++;
+				
+				guids.emplace_back(make_tuple(secOption, ruleType,
+					file.string(), new string));
+				threads.emplace_back(
+					&HashRule::CreateNewHashRule,
+					HashRule(),
+					file.string(),
+					secOption,
+					fileSize,
+					get<RULE_GUID>(guids.back()));
 			}
 		}
 	}
 	catch (const fs::filesystem_error &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (const exception &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (...)
+	{
+		cout << "Unknown exception" << endl;
+	}
+}
+
+//print how many rules were created and runtime of rule creation
+void SecPolicy::PrintStats() const
+{
+	common_type_t<chrono::nanoseconds,
+		chrono::nanoseconds> diff =
+		chrono::high_resolution_clock::now() - startTime;
+
+	int secs;
+	int mins = chrono::duration<double, milli>(diff).count() / 60000;
+
+	if (mins > 0)
+		secs = (int)(chrono::duration<double, milli>(diff).count() / 1000) % (mins * 60);
+	else
+		secs = chrono::duration<double, milli>(diff).count() / 1000;
+
+	if (tempRuleCreation)
+	{
+		if (mins > 0)
+		{
+			cout << "Created and removed " << ruleCount
+				<< " temporary hash rules in " << mins << " mins, "
+				<< secs << " secs " << endl;
+		}
+		else
+		{
+			cout << "Created and removed " << ruleCount
+				<< " temporary hash rules in "
+				<< secs << " secs " << endl;
+		}
+	}
+	else
+	{
+		if (mins > 0)
+		{
+			cout << "Created " << ruleCount << " hash rules in "
+				<< mins << " mins, " << secs << " secs" << endl;
+		}
+		else
+		{
+			cout << "Created " << ruleCount << " hash rules in "
+				<< secs << " secs" << endl;
+		}
+	}
+} 
+
+//make sure Windows applies policy changes
+void SecPolicy::ApplyChanges()
+{
+	//Windows randomly applies the rules that are written to the registry,
+	//so to persuade Windows to apply the rule changes we have to change a 
+	//global policy setting. I add a random executeable type and then remove it
+	//so that it doesn't really affect anything. Changing any other of the global
+	//rules even for a split second, is a security risk
+	using namespace winreg;
+	try 
+	{
+		cout << endl << "Applying changes...";
+
+		executableTypes.push_back("ABC");
+		RegKey policySettings(
+			HKEY_LOCAL_MACHINE,
+			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
+			KEY_READ | KEY_WRITE);
+
+		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+		Sleep(1000);
+
+		executableTypes.pop_back();
+		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+
+		cout << "done" << endl;
+	}
+	catch (const RegException &e)
 	{
 		cout << e.what() << endl;
 	}
