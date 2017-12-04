@@ -58,7 +58,7 @@ void SecPolicy::TempRun(const string &path)
 			string subKey;
 			HashRule tempRule;
 			tempRule.CreateNewHashRule(path, SecOptions::WHITELIST, size, &subKey);
-			ApplyChanges();
+			ApplyChanges(false);
 
 			ruleCount++;
 			cout << "Created temporary allow rule for " << file.string()
@@ -133,7 +133,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 		for (auto &t : threads)
 			t.join();
 
-		ApplyChanges();
+		ApplyChanges(false);
 
 		cout << "\nCreated temporary allow rules in " << tempDir.string()
 			<< ". Executing " << exeFile.string() << " now...\n\n";
@@ -171,12 +171,15 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 
 		//delete temporary rules in parallel
 		threads.clear();
-		for (const auto &tempRuleID : guids)
+		for (const auto &tempRuleID : rulesInfo)
 			threads.emplace_back(
 				&HashRule::RemoveRule,
 				HashRule(),
 				get<RULE_GUID>(tempRuleID),
 				SecOptions::WHITELIST);
+
+		//clear temp rules
+		rulesInfo.clear();
 	}
 	catch (const fs::filesystem_error &e)
 	{
@@ -479,7 +482,7 @@ void SecPolicy::CheckValidType(const fs::path &file, const long long &fileSize)
 			{
 				ruleCount++;
 				
-				guids.emplace_back(make_tuple(secOption, ruleType,
+				rulesInfo.emplace_back(make_tuple(secOption, ruleType,
 					file.string(), new string));
 				threads.emplace_back(
 					&HashRule::CreateNewHashRule,
@@ -487,7 +490,7 @@ void SecPolicy::CheckValidType(const fs::path &file, const long long &fileSize)
 					file.string(),
 					secOption,
 					fileSize,
-					get<RULE_GUID>(guids.back()));
+					get<RULE_GUID>(rulesInfo.back()));
 			}
 		}
 	}
@@ -503,6 +506,11 @@ void SecPolicy::CheckValidType(const fs::path &file, const long long &fileSize)
 	{
 		cout << "Unknown exception" << endl;
 	}
+}
+
+void SecPolicy::WriteToPolicyFile()
+{
+
 }
 
 //print how many rules were created and runtime of rule creation
@@ -551,7 +559,7 @@ void SecPolicy::PrintStats() const
 } 
 
 //make sure Windows applies policy changes
-void SecPolicy::ApplyChanges()
+void SecPolicy::ApplyChanges(bool updateSettings)
 {
 	//Windows randomly applies the rules that are written to the registry,
 	//so to persuade Windows to apply the rule changes we have to change a 
@@ -574,6 +582,10 @@ void SecPolicy::ApplyChanges()
 
 		executableTypes.pop_back();
 		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+
+		//write changes to settings file
+		if(updateSettings)
+			dataFileMan.WriteToFile(rulesInfo);
 
 		cout << "done" << endl;
 	}

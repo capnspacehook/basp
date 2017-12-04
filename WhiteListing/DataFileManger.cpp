@@ -1,65 +1,117 @@
 #include "AppSecPolicy.hpp"
 #include "DataFileManger.hpp"
-#include "WinReg.hpp"
+#include "ProtectedPtr.hpp"
 #include "Windows.h"
 
 #include "Crypto++\pwdbased.h"
 #include "Crypto++\filters.h"
 #include "Crypto++\osrng.h"
 #include "Crypto++\files.h"
-#include "Crypto++\hex.h"
 #include "Crypto++\sha.h"
 #include "Crypto++\aes.h"
 #include "Crypto++\gcm.h"
 
-#include <filesystem>
 #include <exception>
 #include <iostream>
 #include <fstream>
-#include <vector>
 #include <thread>
 #include <string>
 
 using namespace std;
 using namespace CryptoPP;
-namespace fs = std::experimental::filesystem;
+using namespace AppSecPolicy;
+using namespace Protected_Ptr;
 
-bool DataFileManager::FindDataFile()
+bool DataFileManager::OpenPolicyFile(bool writeChanges)
 {
-	fs::path currDir = fs::current_path();
+	string temp;
+	bool goodOpen = true;
 
-	for (const auto &currFile : fs::directory_iterator(currDir))
-	{
-
-	}
-	return false;
-}
-
-void DataFileManager::OpenPolicyFile()
-{
 	GCM<AES>::Decryption decryptor;
-	decryptor.SetKeyWithIV(kdfHash.data(), KEY_SIZE, kdfHash.data() + KEY_SIZE, KEY_SIZE);
+	decryptor.SetKeyWithIV(kdfHash->data(), KEY_SIZE, kdfHash->data() + KEY_SIZE, KEY_SIZE);
+	kdfHash.ProtectMemory(true);
 
-	AuthenticatedDecryptionFilter adf(decryptor, new StringSink(*policyData),
-		AuthenticatedDecryptionFilter::DEFAULT_FLAGS, TAG_SIZE);
-	FileSource(policyFileName.c_str(), true, new Redirector(adf));
+	AuthenticatedDecryptionFilter adf(decryptor, new StringSink(temp),
+		AuthenticatedDecryptionFilter::MAC_AT_END, TAG_SIZE);
+	FileSource encPolicyFile(policyFileName.c_str(), false);
+	//skip part containing the salt
+	encPolicyFile.Pump(KEY_SIZE);
+	encPolicyFile.Attach(new Redirector(adf));
+	encPolicyFile.PumpAll();
 
-	if (adf.GetLastResult() != true)
-		cerr << "File modified!" << endl;
+	if (temp.substr(0, policyFileHeader.size()) != policyFileHeader)
+		goodOpen = false;
 
-	policyData.ProtectMemory(true);
+	else
+		if (adf.GetLastResult() != true)
+		{
+			goodOpen = false;
+			cerr << "File modified!" << endl;
+		}
+
+
+	if (goodOpen && writeChanges)
+	{
+		*policyData = temp;
+		policyData.ProtectMemory(true);
+	}
+
+	SecureZeroMemory(&temp, sizeof(temp));
+
+	return goodOpen;
 }
 
 void DataFileManager::ClosePolicyFile()
 {
 	GCM<AES>::Encryption encryptor;
-	encryptor.SetKeyWithIV(kdfHash.data(), KEY_SIZE, kdfHash.data() + KEY_SIZE, KEY_SIZE);
+	encryptor.SetKeyWithIV(kdfHash->data(), KEY_SIZE, kdfHash->data() + KEY_SIZE, KEY_SIZE);
+	kdfHash.ProtectMemory(true);
 
-	StringSource(*policyData, true, new AuthenticatedEncryptionFilter(
-		encryptor, new FileSink(policyFileName.c_str()), false, TAG_SIZE));
+	//place salt unencrypted in beginning of file
+	FileSink file(policyFileName.c_str());
+	ArraySource as(*kdfSalt, kdfSalt->size(), true,
+		new Redirector(file));
+	kdfSalt.ProtectMemory(true);
 
-	policyData->clear();
+	//prepend header and dummy data that will be skipped
+	policyData->insert(0, policyFileHeader);
+	policyData->insert(0, KEY_SIZE, 'A');
+
+	StringSource updatedData(*policyData, false);
+	//skip part containing the salt
+	updatedData.Pump(KEY_SIZE);
+	updatedData.Attach(new AuthenticatedEncryptionFilter(
+		encryptor, new Redirector(file), false, TAG_SIZE));
+	updatedData.PumpAll();
+
 	policyData.ProtectMemory(true);
+}
+
+void DataFileManager::WriteToFile(const RuleData& rulesInfo)
+{
+	int option;
+	int type;
+	string location;
+	string* guid;
+
+	for (const auto& rule : rulesInfo)
+	{
+		option = static_cast<int>(get<SEC_OPTION>(rule));
+		type = static_cast<int>(get<RULE_TYPE>(rule));
+		location = get<FILE_LOCATION>(rule);
+		guid = get<RULE_GUID>(rule);
+
+		*policyData += to_string(option) + " " + to_string(type)
+			+ " " + location + " " + *guid + "\n";
+	}
+
+	policyData.ProtectMemory(true);
+}
+
+void DataFileManager::WriteChanges()
+{
+	OpenPolicyFile(false);
+	ClosePolicyFile();
 }
 
 void DataFileManager::SetNewPassword()
@@ -80,45 +132,74 @@ void DataFileManager::SetNewPassword()
 		else
 			passesMismatch = false;
 	} while (passesMismatch);
-	SecureWipeArray(&newPass1, newPass1.size());
 
-	AutoSeededRandomPool rng;
-	rng.GenerateBlock(kdfSalt, KEY_SIZE);
+	cout << "Computing new password hash...";
+	SecureZeroMemory(&newPass1, sizeof(newPass1));
+
+	AutoSeededRandomPool prng;
+	prng.GenerateBlock(*kdfSalt, KEY_SIZE);
 
 	PKCS5_PBKDF2_HMAC<SHA256> kdf;
 	kdf.DeriveKey(
-		kdfHash.data(),
-		kdfHash.size(),
+		kdfHash->data(),
+		kdfHash->size(),
 		0,
 		(byte*)newPass2.data(),
 		newPass2.size(),
-		kdfSalt.data(),
-		kdfSalt.size(),
+		kdfSalt->data(),
+		kdfSalt->size(),
 		iterations);
 
-	SecureWipeArray(&newPass2, newPass2.size());
+	SecureZeroMemory(&newPass2, sizeof(newPass2));
+	
+	kdfHash.ProtectMemory(true);
+	kdfSalt.ProtectMemory(true);
+
+	cout << "done" << endl;
+
 	ClosePolicyFile();
 }
 
 void DataFileManager::CheckPassword()
 {
-	string password; 
-	cout << "Enter the password:\n";
-	GetPassword(password);
-
-	PKCS5_PBKDF2_HMAC<SHA256> kdf;
-	kdf.DeriveKey(
-		kdfHash.data(),
-		kdfHash.size(),
-		0,
-		(byte*)password.data(),
-		password.size(),
-		kdfSalt.data(),
-		kdfSalt.size(),
-		iterations);
+	string salt, password;
+	bool validPwd;
 	
-	SecureWipeArray(password.data(), password.size());
-	OpenPolicyFile();
+	//get salt from beginning of file
+	FileSource encPolicyFile(policyFileName.c_str(), false);
+	encPolicyFile.Attach(new ArraySink(*kdfSalt, kdfSalt->size()));
+	encPolicyFile.Pump(KEY_SIZE);
+	
+	do
+	{
+		cout << "Enter the password:\n";
+		GetPassword(password);
+		cout << "Verifying password...";
+
+		PKCS5_PBKDF2_HMAC<SHA256> kdf;
+		kdf.DeriveKey(
+			kdfHash->data(),
+			kdfHash->size(),
+			0,
+			(byte*)password.data(),
+			password.size(),
+			kdfSalt->data(),
+			kdfSalt->size(),
+			iterations);
+
+		kdfHash.ProtectMemory(true);
+		kdfSalt.ProtectMemory(true);
+
+		validPwd = OpenPolicyFile(true);
+
+		if (validPwd)
+			cout << "done\n";
+		else
+			cout << "\nInvalid password entered\n";
+
+	} while (!validPwd);
+
+	SecureZeroMemory(&password, sizeof(password));
 }
 
 //securely get password from user

@@ -1,43 +1,61 @@
+#include "AppSecPolicy.hpp"
+#include "ProtectedPtr.hpp"
 #include "Crypto++\aes.h"
-#include "Protected.hpp"
-#include "Windows.h"
+
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
+#include <tuple>
 #pragma once
 
-class DataFileManager
+using CryptoPP::AES;
+using CryptoPP::SecByteBlock;
+using namespace Protected_Ptr;
+using namespace AppSecPolicy;
+namespace fs = std::experimental::filesystem;
+
+namespace AppSecPolicy
 {
-public:
-	explicit DataFileManager() 
+	class DataFileManager
 	{
-		kdfSalt.resize(KEY_SIZE);
-		kdfHash.resize(KEY_SIZE * 2);
-		policyData.assign(new std::string);
+	public:
+		explicit DataFileManager()
+		{
+			kdfSalt.SetWipeOnExit(false);
+			kdfHash.SetWipeOnExit(false);
+			kdfSalt.assign(new SecByteBlock(KEY_SIZE));
+			kdfHash.assign(new SecByteBlock(KEY_SIZE * 2));
+			policyData.assign(new std::string);
 
-		SetNewPassword();
-		OpenPolicyFile();
-	}
-	~DataFileManager() 
-	{
-		ClosePolicyFile();
-	}
+			if (fs::exists(policyFileName))
+				CheckPassword();
+			else
+				SetNewPassword();
+		}
+		~DataFileManager()
+		{
+			WriteChanges();
+		}
 
-	void OpenPolicyFile();
-	void ClosePolicyFile();
-	void CheckPassword();
+		void CheckPassword();
+		void SetNewPassword();
+		void WriteToFile(const RuleData&);
 
-private:
-	bool FindDataFile();
-	void SetNewPassword();
-	void GetPassword(std::string&);
+	private:
+		void GetPassword(std::string&);
+		inline bool OpenPolicyFile(bool);
+		inline void ClosePolicyFile();
+		void WriteChanges();
 
-	const size_t iterations = 1000000;	//iterations for PBKDF2
-	const size_t TAG_SIZE = CryptoPP::AES::BLOCKSIZE;
-	const size_t KEY_SIZE = CryptoPP::AES::MAX_KEYLENGTH;
-	CryptoPP::SecByteBlock kdfSalt;
-	CryptoPP::SecByteBlock kdfHash;
+		const size_t iterations = 10000;	//iterations for PBKDF2
+		const size_t TAG_SIZE = AES::BLOCKSIZE;
+		const size_t KEY_SIZE = AES::MAX_KEYLENGTH;
+		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfSalt;
+		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfHash;
 
-	std::string policyFileName = "abc.txt";
-	Protected<std::string> policyData;
-};
+		const std::string policyFileName = "Policy Settings.dat";
+		const std::string policyFileHeader = "\nPolicy Settings\n";
+		ProtectedPtr<std::string, StringSerializer> policyData;
+	};
+}

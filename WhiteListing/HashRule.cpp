@@ -190,7 +190,7 @@ void HashRule::HashDigests(const string &fileName)
 	SHA256 shaHash;
 	string md5Digest;
 	string shaDigest;
-
+	
 	FileSource(
 		fileName.c_str(), true, new HashFilter(
 			md5Hash, new HexEncoder(new StringSink(md5Digest))));

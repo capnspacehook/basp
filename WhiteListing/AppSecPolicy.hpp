@@ -1,3 +1,6 @@
+#include <vector>
+#include <string>
+#include <tuple>
 #pragma once
 
 namespace AppSecPolicy
@@ -9,4 +12,7 @@ namespace AppSecPolicy
 
 	enum class SecOptions { BLACKLIST, WHITELIST };
 	enum class RuleType { HASHRULE, PATHRULE };
+
+	typedef std::vector<std::tuple< SecOptions, RuleType,
+		std::string, std::string*>> RuleData;
 }

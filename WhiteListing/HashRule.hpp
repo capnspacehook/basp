@@ -6,58 +6,72 @@
 #include <vector>
 #pragma once
 
-class HashRule
+namespace AppSecPolicy
 {
-public:
-	explicit HashRule() noexcept = default;
-	explicit HashRule(const HashRule &rhs) noexcept
+	class HashRule
 	{
-		guid = rhs.guid;
-		description = rhs.description;
-		fileVersion = rhs.fileVersion;
-		friendlyName = rhs.friendlyName;
-		itemData = rhs.itemData;
-		itemSize = rhs.itemSize;
-		lastModified = rhs.lastModified;
-		sha256Hash = rhs.sha256Hash;
-	}
-	explicit HashRule(HashRule &&rhs) noexcept
-	{
-		guid = rhs.guid;
-		description = rhs.description;
-		fileVersion = rhs.fileVersion;
-		friendlyName = rhs.friendlyName;
-		itemData = rhs.itemData;
-		itemSize = rhs.itemSize;
-		lastModified = rhs.lastModified;
-		sha256Hash = rhs.sha256Hash;
-	}
-	void CreateNewHashRule(const std::string &fileName,
-		const AppSecPolicy::SecOptions &policy,
-		const long long& fileSize, std::string *subKey);
-	void RemoveRule(const std::string *guid,
-		const AppSecPolicy::SecOptions &policy);
-	
-private:
-	void EnumFileVersion(const std::string &fileName);
-	void EnumFriendlyName(const std::string &fileName);
-	inline void EnumFileTime();
-	void HashDigests(const std::string &fileName);
-	inline void CreateGUID();
-	void WriteToRegistry(const std::string &fileName,
-		const AppSecPolicy::SecOptions &policy);
-	inline bool MakeGUID();
-	inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;
+	public:
+		explicit HashRule() noexcept = default;
+		explicit HashRule(HashRule &other)
+		{
+			other.swap(*this);
+		}
+		explicit HashRule(HashRule &&other) noexcept
+		{
+			other.swap(*this);
+		}
+		void CreateNewHashRule(const std::string &fileName,
+			const AppSecPolicy::SecOptions &policy,
+			const long long& fileSize, std::string *subKey);
+		void RemoveRule(const std::string *guid,
+			const AppSecPolicy::SecOptions &policy);
 
-	std::string guid;
-	static const std::string fileProps[5];
-	std::string description = "";
-	std::string fileVersion;
-	std::string friendlyName = "";
-	static const int hashAlg = 32771;
-	std::vector<BYTE> itemData;
-	long long itemSize;
-	long long lastModified;
-	static const int shaHashAlg = 32780;
-	std::vector<BYTE> sha256Hash;
-};
+		void swap(HashRule& other) noexcept
+		{
+			using std::swap;
+			swap(this->guid, other.guid);
+			swap(this->description, other.description);
+			swap(this->fileVersion, other.fileVersion);
+			swap(this->friendlyName, other.friendlyName);
+			swap(this->itemData, other.itemData);
+			swap(this->itemSize, other.itemSize);
+			swap(this->lastModified, other.lastModified);
+			swap(this->sha256Hash, other.sha256Hash);
+		}
+		HashRule& operator=(HashRule rhs)
+		{
+			rhs.swap(*this);
+			return *this;
+		}
+		HashRule& operator=(HashRule&& rhs) noexcept
+		{
+			rhs.swap(*this);
+			return *this;
+		}
+
+	private:
+		void EnumFileVersion(const std::string &fileName);
+		void EnumFriendlyName(const std::string &fileName);
+		inline void EnumFileTime();
+		void HashDigests(const std::string &fileName);
+		inline void CreateGUID();
+		void WriteToRegistry(const std::string &fileName,
+			const AppSecPolicy::SecOptions &policy);
+		inline bool MakeGUID();
+		inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;
+
+		std::string guid;
+		static const std::string fileProps[5];
+		std::string description = "";
+		std::string fileVersion;
+		std::string friendlyName = "";
+		static const int hashAlg = 32771;
+		std::vector<BYTE> itemData;
+		long long itemSize;
+		long long lastModified;
+		static const int shaHashAlg = 32780;
+		std::vector<BYTE> sha256Hash;
+	};
+}
+
+//void swap(HashRule& lhs, HashRule& rhs) noexcept { lhs.swap(rhs); };
