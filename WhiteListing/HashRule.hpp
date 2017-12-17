@@ -21,10 +21,12 @@ namespace AppSecPolicy
 			other.swap(*this);
 		}
 		void CreateNewHashRule(const std::string &fileName,
-			const AppSecPolicy::SecOptions &policy,
-			const long long& fileSize, std::string *subKey);
-		void RemoveRule(const std::string *guid,
-			const AppSecPolicy::SecOptions &policy);
+			const AppSecPolicy::SecOption &policy,
+			const long long& fileSize, std::shared_ptr<std::string>);
+		void SwitchRule(const std::string &guid,
+			AppSecPolicy::SecOption option);
+		void RemoveRule(const std::string guid,
+			const AppSecPolicy::SecOption &policy);
 
 		void swap(HashRule& other) noexcept
 		{
@@ -52,11 +54,11 @@ namespace AppSecPolicy
 	private:
 		void EnumFileVersion(const std::string &fileName);
 		void EnumFriendlyName(const std::string &fileName);
-		inline void EnumFileTime();
+		inline void EnumCreationTime();
 		void HashDigests(const std::string &fileName);
 		inline void CreateGUID();
 		void WriteToRegistry(const std::string &fileName,
-			const AppSecPolicy::SecOptions &policy);
+			const AppSecPolicy::SecOption &policy);
 		inline bool MakeGUID();
 		inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;
 
@@ -73,5 +75,3 @@ namespace AppSecPolicy
 		std::vector<BYTE> sha256Hash;
 	};
 }
-
-//void swap(HashRule& lhs, HashRule& rhs) noexcept { lhs.swap(rhs); };

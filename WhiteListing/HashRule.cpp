@@ -34,11 +34,11 @@ const string HashRule::fileProps[5] = {
 
 //sets the 'subKey' parameter to the rule's guid
 void HashRule::CreateNewHashRule(const string &fileName,
-	const SecOptions &secOption, const long long &fileSize, string *subKey)
+	const SecOption &secOption, const long long &fileSize, std::shared_ptr<std::string> subKey)
 {
 	itemSize = fileSize;
 	EnumFriendlyName(fileName);
-	EnumFileTime();
+	EnumCreationTime();
 	HashDigests(fileName);
 	CreateGUID();
 	WriteToRegistry(fileName, secOption);
@@ -173,7 +173,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 }
 
 //gets current time 
-inline void HashRule::EnumFileTime()
+inline void HashRule::EnumCreationTime()
 {
 	FILETIME currTime;
 	GetSystemTimeAsFileTime(&currTime);
@@ -261,7 +261,7 @@ inline bool HashRule::MakeGUID()
 
 //write the hash rule to the registry
 void HashRule::WriteToRegistry(const string &fileName,
-	const SecOptions &policy)
+	const SecOption &policy)
 {
 	using namespace winreg;
 
@@ -271,7 +271,7 @@ void HashRule::WriteToRegistry(const string &fileName,
 		string policyPath =
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
 
-		if (policy == SecOptions::BLACKLIST)
+		if (policy == SecOption::BLACKLIST)
 			ruleType = "\\0\\Hashes\\";
 		else
 			ruleType = "\\262144\\Hashes\\";
@@ -290,7 +290,7 @@ void HashRule::WriteToRegistry(const string &fileName,
 		hashRuleKey.SetBinaryValue("ItemData", itemData);
 		hashRuleKey.SetQwordValue("ItemSize", itemSize);
 		hashRuleKey.SetQwordValue("LastModified", lastModified);
-		hashRuleKey.SetDwordValue("SaferFlags", 0);					//not used
+		hashRuleKey.SetDwordValue("SaferFlags", 0);	//not used
 
 		hashRuleKey.Close();
 		hashRuleKey.Create(
@@ -315,7 +315,70 @@ void HashRule::WriteToRegistry(const string &fileName,
 	}
 }
 
-void HashRule::RemoveRule(const string *guid, const SecOptions &policy)
+void HashRule::SwitchRule(const std::string &ruleGuid, SecOption option)
+{
+	using namespace winreg;
+	
+	try
+	{ 
+		string fileName;
+		string ruleType;
+		string rulePath;
+		string policyPath =
+			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
+
+		guid = ruleGuid;
+
+		if (option == SecOption::WHITELIST)
+			ruleType = "\\0\\Hashes\\";
+		else
+			ruleType = "\\262144\\Hashes\\";
+
+		policyPath += ruleType;
+		rulePath += policyPath + guid;
+
+		//get values of already created rule
+		RegKey hashRuleKey(
+			HKEY_LOCAL_MACHINE,
+			rulePath,
+			KEY_READ
+		);
+
+		fileName = hashRuleKey.GetStringValue("Description");
+		friendlyName = hashRuleKey.GetStringValue("FriendlyName");
+		itemData = hashRuleKey.GetBinaryValue("ItemData");
+		itemSize = hashRuleKey.GetQwordValue("ItemSize");
+		EnumCreationTime();
+
+		hashRuleKey.Close();
+		hashRuleKey.Open(
+			HKEY_LOCAL_MACHINE,
+			rulePath + "\\SHA256",
+			KEY_READ);
+
+		sha256Hash = hashRuleKey.GetBinaryValue("ItemData");
+
+		WriteToRegistry(fileName, option);
+
+		//flip option and delete old rule
+		option = static_cast<SecOption>(!static_cast<bool>(option));
+		RemoveRule(guid, option);
+	}
+	catch (const RegException &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (const exception &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (...)
+	{
+		cout << "Unknown exception" << endl;
+	}
+}
+
+void HashRule::RemoveRule(const string guid, const SecOption &policy)
 {
 	using namespace winreg;
 
@@ -325,7 +388,7 @@ void HashRule::RemoveRule(const string *guid, const SecOptions &policy)
 		string policyPath =
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
 
-		if (policy == SecOptions::BLACKLIST)
+		if (policy == SecOption::BLACKLIST)
 			ruleType = "\\0\\Hashes\\";
 		else
 			ruleType = "\\262144\\Hashes\\";
@@ -338,8 +401,8 @@ void HashRule::RemoveRule(const string *guid, const SecOptions &policy)
 			DELETE
 			);
 
-		tempKey.DeleteKey(*guid + "\\SHA256", KEY_WOW64_32KEY);
-		tempKey.DeleteKey(*guid, KEY_WOW64_32KEY);
+		tempKey.DeleteKey(guid + "\\SHA256", KEY_WOW64_32KEY);
+		tempKey.DeleteKey(guid, KEY_WOW64_32KEY);
 	}
 	catch (const RegException &e)
 	{

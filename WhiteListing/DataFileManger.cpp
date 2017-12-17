@@ -1,6 +1,7 @@
 #include "AppSecPolicy.hpp"
 #include "DataFileManger.hpp"
 #include "ProtectedPtr.hpp"
+#include "WinReg.hpp"
 #include "Windows.h"
 
 #include "Crypto++\pwdbased.h"
@@ -11,9 +12,12 @@
 #include "Crypto++\aes.h"
 #include "Crypto++\gcm.h"
 
+#include <filesystem>
+#include <algorithm>
 #include <exception>
 #include <iostream>
-#include <fstream>
+#include <sstream>
+#include <vector>
 #include <thread>
 #include <string>
 
@@ -21,8 +25,9 @@ using namespace std;
 using namespace CryptoPP;
 using namespace AppSecPolicy;
 using namespace Protected_Ptr;
+namespace fs = std::experimental::filesystem;
 
-bool DataFileManager::OpenPolicyFile(bool writeChanges)
+bool DataFileManager::OpenPolicyFile()
 {
 	string temp;
 	bool goodOpen = true;
@@ -49,10 +54,22 @@ bool DataFileManager::OpenPolicyFile(bool writeChanges)
 			cerr << "File modified!" << endl;
 		}
 
-
-	if (goodOpen && writeChanges)
+	if (goodOpen)
 	{
 		*policyData = temp;
+		temp.clear();
+		
+		istringstream iss(*policyData);
+
+		//skip header 
+		getline(iss, temp);
+		while (getline(iss, temp))
+		{
+			ruleInfo.emplace_back(temp + "\n");
+			rulePaths.emplace_back(temp.substr(
+				RULE_PATH_POS, temp.find_last_of("|") - 4));
+		}
+
 		policyData.ProtectMemory(true);
 	}
 
@@ -74,7 +91,11 @@ void DataFileManager::ClosePolicyFile()
 	kdfSalt.ProtectMemory(true);
 
 	//prepend header and dummy data that will be skipped
-	policyData->insert(0, policyFileHeader);
+	if(policyDataModified)
+		policyData->insert(0, policyFileHeader);
+
+	policyData->insert(policyFileHeader.length(), GetGobalPolicySettings());
+
 	policyData->insert(0, KEY_SIZE, 'A');
 
 	StringSource updatedData(*policyData, false);
@@ -87,77 +108,149 @@ void DataFileManager::ClosePolicyFile()
 	policyData.ProtectMemory(true);
 }
 
-void DataFileManager::WriteToFile(const RuleData& rulesInfo)
+string DataFileManager::GetGobalPolicySettings() const
 {
-	int option;
-	int type;
-	string location;
-	string* guid;
+	using namespace winreg;
 
-	for (const auto& rule : rulesInfo)
+	try
 	{
-		option = static_cast<int>(get<SEC_OPTION>(rule));
-		type = static_cast<int>(get<RULE_TYPE>(rule));
-		location = get<FILE_LOCATION>(rule);
-		guid = get<RULE_GUID>(rule);
+		string policySettings = "";
+		RegKey policyKey(
+			HKEY_LOCAL_MACHINE,
+			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
+			KEY_READ);
+		
+		policySettings += policyKey.GetDwordValue("AuthenticodeEnabled");
+		policySettings += "|";
+		
+		int defaultLevel = policyKey.GetDwordValue("DefaultLevel");
+		if (defaultLevel == 262144)
+			defaultLevel = 1;
+		
+		policySettings += to_string(defaultLevel);
+		policySettings += "|";
 
-		*policyData += to_string(option) + " " + to_string(type)
-			+ " " + location + " " + *guid + "\n";
+		policySettings += policyKey.GetDwordValue("PolicyScope");
+		policySettings += "|";
+
+		policySettings += policyKey.GetDwordValue("TransparentEnabled");
+		policySettings += "|";
+
+		vector<string> exeTypes = policyKey.GetMultiStringValue("ExecutableTypes");
+		for (const auto& type : exeTypes)
+			policySettings += type + ",";
+
+		return policySettings;
+	}
+	catch (const RegException &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (const exception &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (...)
+	{
+		cout << "Unknown exception" << endl;
+	}
+}
+
+void DataFileManager::ReorganizePolicyData()
+{
+	//sort rule paths, with parent directories first
+	sort(ruleInfo.begin(), ruleInfo.end());
+
+	policyData->clear();
+
+	for (const auto& line : ruleInfo)
+		*policyData += line;
+
+	policyDataModified = true;
+}
+
+RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
+	const string &path, string &guid) const
+{
+	SecOption findOp = option;
+	RuleType findType = type;
+	RuleFindResult result = RuleFindResult::NO_MATCH;
+
+	if (!rulePaths.size())
+		return result;
+
+	auto iterator = lower_bound(rulePaths.begin(), rulePaths.end(), path);
+	
+	if (iterator != rulePaths.end() && !(path < *iterator))
+	{
+		string foundRule = ruleInfo[distance(rulePaths.begin(), iterator)];
+
+		option = static_cast<SecOption>(
+			(int)(foundRule.at(SEC_OPTION_POS) - '0'));
+
+		type = static_cast<RuleType>(
+			(int)(foundRule.at(RULE_TYPE_POS) - '0'));
+
+		guid = foundRule.substr(foundRule.find_last_of("|") + 1,
+			foundRule.length());
+		guid.pop_back();
+
+		if (findOp != option && findType != type)
+			result = RuleFindResult::DIFF_OP_AND_TYPE;
+
+		else if (findOp != option)
+			result = RuleFindResult::DIFF_SEC_OP;
+
+		else if (findType != type)
+			result = RuleFindResult::DIFF_TYPE;
+
+		else
+			result = RuleFindResult::EXACT_MATCH;
 	}
 
-	policyData.ProtectMemory(true);
+	return result;
 }
 
-void DataFileManager::WriteChanges()
+void DataFileManager::WriteToFile(const RuleData& ruleData, bool rulesSwitched)
 {
-	OpenPolicyFile(false);
-	ClosePolicyFile();
-}
-
-void DataFileManager::SetNewPassword()
-{
-	string newPass1, newPass2;
-	bool passesMismatch = true;
-
-	do 
+	try
 	{
-		cout << "Enter your new password:\n";
-		GetPassword(newPass1);
+		int option;
+		int type;
+		string location;
+		string guid;
 
-		cout << "Enter it again:\n";
-		GetPassword(newPass2);
+		for (const auto& rule : ruleData)
+		{
+			option = static_cast<int>(get<SEC_OPTION>(rule));
+			type = static_cast<int>(get<RULE_TYPE>(rule));
+			location = get<FILE_LOCATION>(rule);
+			guid = *get<RULE_GUID>(rule);
 
-		if (newPass1 != newPass2)
-			cout << "Passwords do not match. Please enter again.\n";
-		else
-			passesMismatch = false;
-	} while (passesMismatch);
+			if (rulesSwitched)
+			{
+				auto iterator = lower_bound(
+					rulePaths.begin(), rulePaths.end(), location);
 
-	cout << "Computing new password hash...";
-	SecureZeroMemory(&newPass1, sizeof(newPass1));
+				std::size_t index = std::distance(rulePaths.begin(), iterator);
 
-	AutoSeededRandomPool prng;
-	prng.GenerateBlock(*kdfSalt, KEY_SIZE);
+				ruleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+			}
 
-	PKCS5_PBKDF2_HMAC<SHA256> kdf;
-	kdf.DeriveKey(
-		kdfHash->data(),
-		kdfHash->size(),
-		0,
-		(byte*)newPass2.data(),
-		newPass2.size(),
-		kdfSalt->data(),
-		kdfSalt->size(),
-		iterations);
+			else
+			{
+				ruleInfo.emplace_back(to_string(option) + "|" + to_string(type)
+					+ "|" + location + "|" + guid + "\n");
+			}
+		}
 
-	SecureZeroMemory(&newPass2, sizeof(newPass2));
-	
-	kdfHash.ProtectMemory(true);
-	kdfSalt.ProtectMemory(true);
-
-	cout << "done" << endl;
-
-	ClosePolicyFile();
+		if (ruleInfo.size())
+			ReorganizePolicyData();
+	}
+	catch (const exception &e)
+	{
+		cerr << e.what() << endl;
+	}
 }
 
 void DataFileManager::CheckPassword()
@@ -190,7 +283,7 @@ void DataFileManager::CheckPassword()
 		kdfHash.ProtectMemory(true);
 		kdfSalt.ProtectMemory(true);
 
-		validPwd = OpenPolicyFile(true);
+		validPwd = OpenPolicyFile();
 
 		if (validPwd)
 			cout << "done\n";
@@ -200,6 +293,50 @@ void DataFileManager::CheckPassword()
 	} while (!validPwd);
 
 	SecureZeroMemory(&password, sizeof(password));
+}
+
+void DataFileManager::SetNewPassword()
+{
+	string newPass1, newPass2;
+	bool passesMismatch = true;
+
+	do
+	{
+		cout << "Enter your new password:\n";
+		GetPassword(newPass1);
+
+		cout << "Enter it again:\n";
+		GetPassword(newPass2);
+
+		if (newPass1 != newPass2)
+			cout << "Passwords do not match. Please enter again.\n";
+		else
+			passesMismatch = false;
+	} while (passesMismatch);
+
+	cout << "Computing new password hash...";
+	SecureZeroMemory(&newPass1, sizeof(newPass1));
+
+	AutoSeededRandomPool prng;
+	prng.GenerateBlock(*kdfSalt, KEY_SIZE);
+
+	PKCS5_PBKDF2_HMAC<SHA256> kdf;
+	kdf.DeriveKey(
+		kdfHash->data(),
+		kdfHash->size(),
+		0,
+		(byte*)newPass2.data(),
+		newPass2.size(),
+		kdfSalt->data(),
+		kdfSalt->size(),
+		iterations);
+
+	SecureZeroMemory(&newPass2, sizeof(newPass2));
+
+	kdfHash.ProtectMemory(true);
+	kdfSalt.ProtectMemory(true);
+
+	cout << "done" << endl;
 }
 
 //securely get password from user
@@ -215,4 +352,61 @@ void DataFileManager::GetPassword(string &password)
 
 	//reset console to normal
 	SetConsoleMode(hStdin, mode);
+}
+
+void DataFileManager::ListRules() const
+{
+	auto sortedRules = ruleInfo;
+	sort(sortedRules.begin(), sortedRules.end(), 
+		[&](const string &str1, const string &str2)
+	{
+		if (str1[SEC_OPTION] != str2[SEC_OPTION])
+			return str1[SEC_OPTION] < str2[SEC_OPTION];
+
+		fs::path path1(str1.substr(RULE_PATH_POS,
+			str1.find_last_of("|") - 4));
+
+		fs::path path2(str2.substr(RULE_PATH_POS,
+			str2.find_last_of("|") - 4));
+
+		//if parent directories are the same, compare filenames
+		if (path1.parent_path() == path2.parent_path())
+			return path1 < path2;
+
+		vector<string> path1Expnded;
+		vector<string> path2Expnded;
+
+		for (const auto &part : path1)
+			path1Expnded.emplace_back(part.string());
+
+		for (const auto &part : path2)
+			path2Expnded.emplace_back(part.string());
+
+		//if paths have same amount of stems, compare full paths
+		if (path1Expnded.size() == path2Expnded.size())
+			return path1 < path2;
+
+		int minSize;
+		path1Expnded.size() <= path2Expnded.size()
+			? minSize = path1Expnded.size()
+			: minSize = path2Expnded.size();
+
+		//sort by first differing stem
+		for (int i = 0; i < minSize - 1; i++)
+			if (path1Expnded[i] != path2Expnded[i])
+				return path1Expnded[i] < path2Expnded[i];
+
+		//if sizes differ and no stems are the same, sort by number of stems
+		return path1Expnded.size() < path2Expnded.size();
+	});
+
+	int index = 0;
+	int blackList = static_cast<int>(SecOption::BLACKLIST);
+
+	while (sortedRules[index][SEC_OPTION] == blackList)
+	{
+		cout << sortedRules[index].substr(RULE_PATH_POS,
+			sortedRules[index].find_last_of("|") - 4)
+			<< "";
+	}
 }

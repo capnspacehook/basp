@@ -1,6 +1,7 @@
 #include <vector>
 #include <string>
 #include <tuple>
+#include <memory>
 #pragma once
 
 namespace AppSecPolicy
@@ -10,9 +11,10 @@ namespace AppSecPolicy
 	const int FILE_LOCATION = 2;
 	const int RULE_GUID = 3;
 
-	enum class SecOptions { BLACKLIST, WHITELIST };
+	enum class SecOption { BLACKLIST, WHITELIST };
 	enum class RuleType { HASHRULE, PATHRULE };
+	enum class RuleFindResult { EXACT_MATCH, DIFF_SEC_OP, DIFF_TYPE, DIFF_OP_AND_TYPE, NO_MATCH };
 
-	typedef std::vector<std::tuple< SecOptions, RuleType,
-		std::string, std::string*>> RuleData;
+	typedef std::vector<std::tuple<SecOption, RuleType,
+		std::string, std::shared_ptr<std::string>>> RuleData;
 }

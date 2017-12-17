@@ -17,6 +17,10 @@ namespace fs = std::experimental::filesystem;
 
 namespace AppSecPolicy
 {
+	const int SEC_OPTION_POS = 0;
+	const int RULE_TYPE_POS = 2;
+	const int RULE_PATH_POS = 4;
+
 	class DataFileManager
 	{
 	public:
@@ -35,27 +39,41 @@ namespace AppSecPolicy
 		}
 		~DataFileManager()
 		{
-			WriteChanges();
+			ClosePolicyFile();
 		}
 
 		void CheckPassword();
 		void SetNewPassword();
-		void WriteToFile(const RuleData&);
+		RuleFindResult FindRule(AppSecPolicy::SecOption, RuleType,
+			const std::string&, std::string&) const;
+		void WriteToFile(const RuleData&, bool);
+		void ListRules() const;
 
 	private:
 		void GetPassword(std::string&);
-		inline bool OpenPolicyFile(bool);
-		inline void ClosePolicyFile();
-		void WriteChanges();
+		bool OpenPolicyFile();
+		void ClosePolicyFile();
+		std::string GetGobalPolicySettings() const;
+		void ReorganizePolicyData();
 
-		const size_t iterations = 10000;	//iterations for PBKDF2
-		const size_t TAG_SIZE = AES::BLOCKSIZE;
-		const size_t KEY_SIZE = AES::MAX_KEYLENGTH;
+		const int iterations = 1000;	//iterations for PBKDF2
+		const int TAG_SIZE = AES::BLOCKSIZE;
+		const int KEY_SIZE = AES::MAX_KEYLENGTH;
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfSalt;
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfHash;
 
 		const std::string policyFileName = "Policy Settings.dat";
-		const std::string policyFileHeader = "\nPolicy Settings\n";
+		const std::string policyFileHeader = "Policy Settings\n";
 		ProtectedPtr<std::string, StringSerializer> policyData;
+		std::vector<std::string> ruleInfo;		//data of already created rules
+		std::vector<std::string> rulePaths;		//paths of created rules for searching
+		bool policyDataModified = false;
+
+		std::vector<std::string> executableTypes = {
+			"ADE", "ADP", "APPLICATION", "BAS", "BAT", "BGI", "CHM", "CMD", "COM",
+			"CPL", "CRT", "DIAGCAB", "DLL", "EXE", "HLP", "HTA", "INF", "INS",
+			"ISP", "JS", "JSE", "LNK", "MDB", "MDE", "MSC", "MSI", "MSP", "MST",
+			"OCX", "PCD", "PIF", "PS1", "PS2", "PSM", "REG", "SCR", "SCT", "SHS",
+			"URL", "VB", "VBE", "VBS", "VBSCRIPT", "WSC", "XAML", "XBAP", "XPI" };
 	};
 }

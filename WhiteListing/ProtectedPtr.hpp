@@ -151,9 +151,7 @@ namespace Protected_Ptr
 		const T& operator*() const
 		{
 			ProtectMemory(false);
-			T temp = *protectedData;
-			ProtectMemory(true);
-			return temp;
+			return *protectedData;
 		}
 
 		T* const operator->()
@@ -189,7 +187,7 @@ namespace Protected_Ptr
 		//constant time comparison 
 		bool operator==(ProtectedPtr& rhs)
 		{
-			if (sizeof(*protectedData) != sizeof(*rhs))
+			if (serializer.size() != rhs.serializer.size())
 				return false;
 
 			volatile auto thisData = std::make_unique<byte*>(serializeData());

@@ -79,10 +79,10 @@ int main(int argc, char *argv[])
 		if (argc == 3)
 		{
 			if (argv[1] == baseOptions[0] && ValidFile(args[1]))
-				policy.CreatePolicy(args[1], SecOptions::BLACKLIST);
+				policy.CreatePolicy(args[1], SecOption::BLACKLIST);
 
 			else if (argv[1] == baseOptions[1] && ValidFile(args[1]))
-				policy.CreatePolicy(args[1], SecOptions::WHITELIST);
+				policy.CreatePolicy(args[1], SecOption::WHITELIST);
 
 			else if (argv[1] == baseOptions[2] && ValidFile(args[1]))
 			{
@@ -152,10 +152,10 @@ int main(int argc, char *argv[])
 				if (CheckDirConflicts(fileArgs))
 				{
 					if (argv[1] == baseOptions[0])
-						policy.CreatePolicy(fileArgs, SecOptions::BLACKLIST);
+						policy.CreatePolicy(fileArgs, SecOption::BLACKLIST);
 
 					else if (argv[1] == baseOptions[1])
-						policy.CreatePolicy(fileArgs, SecOptions::WHITELIST);
+						policy.CreatePolicy(fileArgs, SecOption::WHITELIST);
 				}
 				else
 				{
@@ -184,6 +184,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	//system("pause");
 }
 
 void CheckElevated()
