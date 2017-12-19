@@ -29,7 +29,6 @@ int main(int argc, char *argv[])
 
 	string fullArgs;
 	bool validOp = false;
-	bool tempRules = false;
 	string programName = argv[0];
 	vector<string> baseOptions = {
 		"-b", "-w" , "-t", "-td", "-l", "/?" };
@@ -94,7 +93,6 @@ int main(int argc, char *argv[])
 				}
 				else
 				{
-					tempRules = true;
 					policy.TempRun(exeFile.string());
 				}
 			}
@@ -117,7 +115,6 @@ int main(int argc, char *argv[])
 				}
 				else
 				{
-					tempRules = true;
 					policy.TempRun(parentDir, exeFile.string());
 				}
 			}
@@ -173,7 +170,7 @@ int main(int argc, char *argv[])
 						<< "specify only one file and omit the -e option" << endl;
 					PrintInvalidMsg(programName);
 				}
-				tempRules = true;
+
 				policy.TempRun(fileArgs[0], fileArgs[1]);
 			}
 
@@ -184,7 +181,6 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	//system("pause");
 }
 
 void CheckElevated()

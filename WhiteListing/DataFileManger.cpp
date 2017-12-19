@@ -44,7 +44,7 @@ bool DataFileManager::OpenPolicyFile()
 	encPolicyFile.Attach(new Redirector(adf));
 	encPolicyFile.PumpAll();
 
-	if (temp.substr(0, policyFileHeader.size()) != policyFileHeader)
+	if (temp.substr(0, policyFileHeader.length()) != policyFileHeader)
 		goodOpen = false;
 
 	else
@@ -70,7 +70,7 @@ bool DataFileManager::OpenPolicyFile()
 				RULE_PATH_POS, temp.find_last_of("|") - 4));
 		}
 
-		policyData.ProtectMemory(true);
+		ClosePolicyFile();
 	}
 
 	SecureZeroMemory(&temp, sizeof(temp));
@@ -83,16 +83,18 @@ void DataFileManager::ClosePolicyFile()
 	GCM<AES>::Encryption encryptor;
 	encryptor.SetKeyWithIV(kdfHash->data(), KEY_SIZE, kdfHash->data() + KEY_SIZE, KEY_SIZE);
 	kdfHash.ProtectMemory(true);
-
+	
 	//place salt unencrypted in beginning of file
 	FileSink file(policyFileName.c_str());
 	ArraySource as(*kdfSalt, kdfSalt->size(), true,
 		new Redirector(file));
 	kdfSalt.ProtectMemory(true);
 
-	//prepend header and dummy data that will be skipped
-	if(policyDataModified)
+	if (policyData->substr(0, policyFileHeader.length()) != policyFileHeader)
+	{
+		//prepend header and dummy data that will be skipped
 		policyData->insert(0, policyFileHeader);
+	}
 
 	policyData->insert(policyFileHeader.length(), GetGobalPolicySettings());
 
@@ -120,7 +122,7 @@ string DataFileManager::GetGobalPolicySettings() const
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
 			KEY_READ);
 		
-		policySettings += policyKey.GetDwordValue("AuthenticodeEnabled");
+		policySettings += to_string(policyKey.GetDwordValue("AuthenticodeEnabled"));
 		policySettings += "|";
 		
 		int defaultLevel = policyKey.GetDwordValue("DefaultLevel");
@@ -130,15 +132,17 @@ string DataFileManager::GetGobalPolicySettings() const
 		policySettings += to_string(defaultLevel);
 		policySettings += "|";
 
-		policySettings += policyKey.GetDwordValue("PolicyScope");
+		policySettings += to_string(policyKey.GetDwordValue("PolicyScope"));
 		policySettings += "|";
 
-		policySettings += policyKey.GetDwordValue("TransparentEnabled");
+		policySettings += to_string(policyKey.GetDwordValue("TransparentEnabled"));
 		policySettings += "|";
 
 		vector<string> exeTypes = policyKey.GetMultiStringValue("ExecutableTypes");
 		for (const auto& type : exeTypes)
 			policySettings += type + ",";
+
+		policySettings[policySettings.length() - 1] = '\n';
 
 		return policySettings;
 	}
@@ -337,6 +341,7 @@ void DataFileManager::SetNewPassword()
 	kdfSalt.ProtectMemory(true);
 
 	cout << "done" << endl;
+	ClosePolicyFile();
 }
 
 //securely get password from user

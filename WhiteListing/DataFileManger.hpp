@@ -31,7 +31,7 @@ namespace AppSecPolicy
 			kdfSalt.assign(new SecByteBlock(KEY_SIZE));
 			kdfHash.assign(new SecByteBlock(KEY_SIZE * 2));
 			policyData.assign(new std::string);
-
+			
 			if (fs::exists(policyFileName))
 				CheckPassword();
 			else
@@ -67,6 +67,7 @@ namespace AppSecPolicy
 		ProtectedPtr<std::string, StringSerializer> policyData;
 		std::vector<std::string> ruleInfo;		//data of already created rules
 		std::vector<std::string> rulePaths;		//paths of created rules for searching
+		
 		bool policyDataModified = false;
 
 		std::vector<std::string> executableTypes = {

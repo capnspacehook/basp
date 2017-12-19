@@ -25,7 +25,7 @@ namespace AppSecPolicy
 			const long long& fileSize, std::shared_ptr<std::string>);
 		void SwitchRule(const std::string &guid,
 			AppSecPolicy::SecOption option);
-		void RemoveRule(const std::string guid,
+		void RemoveRule(const std::string &guid,
 			const AppSecPolicy::SecOption &policy);
 
 		void swap(HashRule& other) noexcept

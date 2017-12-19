@@ -378,7 +378,7 @@ void HashRule::SwitchRule(const std::string &ruleGuid, SecOption option)
 	}
 }
 
-void HashRule::RemoveRule(const string guid, const SecOption &policy)
+void HashRule::RemoveRule(const string &guid, const SecOption &policy)
 {
 	using namespace winreg;
 
