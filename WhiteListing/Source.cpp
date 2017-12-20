@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
 		programName.rfind("\\") + 1,
 		programName.length());
 
-	if (argc < 3)
+	if (argc < 2)
 		PrintInvalidMsg(programName);
 
 	//build up 'fullArgs' to equal single string of entire argument
@@ -73,9 +73,19 @@ int main(int argc, char *argv[])
 	else
 	{
 		SecPolicy policy;
+
+		//if user only passed in one option only
+		if (argc == 2)
+		{
+			if (argv[1] == baseOptions[4])
+				policy.ListRules();
+
+			if (argv[1] == baseOptions[5])
+				PrintInvalidMsg(programName);
+		}
 		
 		//if user passed in one option and one file
-		if (argc == 3)
+		else if (argc == 3)
 		{
 			if (argv[1] == baseOptions[0] && ValidFile(args[1]))
 				policy.CreatePolicy(args[1], SecOption::BLACKLIST);
@@ -181,6 +191,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
+	system("pause");
 }
 
 void CheckElevated()

@@ -63,9 +63,13 @@ bool DataFileManager::OpenPolicyFile()
 
 		//skip header 
 		getline(iss, temp);
+		//get global settings
+		getline(iss, temp);
 		while (getline(iss, temp))
 		{
 			ruleInfo.emplace_back(temp + "\n");
+
+			transform(temp.begin(), temp.end(), temp.begin(), tolower);
 			rulePaths.emplace_back(temp.substr(
 				RULE_PATH_POS, temp.find_last_of("|") - 4));
 		}
@@ -90,15 +94,22 @@ void DataFileManager::ClosePolicyFile()
 		new Redirector(file));
 	kdfSalt.ProtectMemory(true);
 
-	if (policyData->substr(0, policyFileHeader.length()) != policyFileHeader)
+	if (policyData->substr(0, policyFileHeader.length()) != policyFileHeader
+		&& policyData->substr(0, KEY_SIZE) != string(KEY_SIZE, 'A'))
 	{
-		//prepend header and dummy data that will be skipped
+		//prepend header and global policy settings
 		policyData->insert(0, policyFileHeader);
+		policyData->insert(policyFileHeader.length(), GetGobalPolicySettings());
+
+		//prepend dummy data that will be skipped
+		policyData->insert(0, KEY_SIZE, 'A');
 	}
-
-	policyData->insert(policyFileHeader.length(), GetGobalPolicySettings());
-
-	policyData->insert(0, KEY_SIZE, 'A');
+	
+	else if (policyData->substr(0, policyFileHeader.length()) == policyFileHeader)
+	{
+		//prepend dummy data that will be skipped
+		policyData->insert(0, KEY_SIZE, 'A');
+	}
 
 	StringSource updatedData(*policyData, false);
 	//skip part containing the salt
@@ -125,7 +136,7 @@ string DataFileManager::GetGobalPolicySettings() const
 		policySettings += to_string(policyKey.GetDwordValue("AuthenticodeEnabled"));
 		policySettings += "|";
 		
-		int defaultLevel = policyKey.GetDwordValue("DefaultLevel");
+		DWORD defaultLevel = policyKey.GetDwordValue("DefaultLevel");
 		if (defaultLevel == 262144)
 			defaultLevel = 1;
 		
@@ -154,10 +165,6 @@ string DataFileManager::GetGobalPolicySettings() const
 	{
 		cout << e.what() << endl;
 	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
-	}
 }
 
 void DataFileManager::ReorganizePolicyData()
@@ -176,6 +183,10 @@ void DataFileManager::ReorganizePolicyData()
 RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	const string &path, string &guid) const
 {
+	string findPath;
+	transform(path.begin(), path.end(),
+		findPath.begin(), tolower);
+
 	SecOption findOp = option;
 	RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
@@ -366,7 +377,7 @@ void DataFileManager::ListRules() const
 		[&](const string &str1, const string &str2)
 	{
 		if (str1[SEC_OPTION] != str2[SEC_OPTION])
-			return str1[SEC_OPTION] < str2[SEC_OPTION];
+			return str1[SEC_OPTION] > str2[SEC_OPTION];
 
 		fs::path path1(str1.substr(RULE_PATH_POS,
 			str1.find_last_of("|") - 4));
@@ -405,13 +416,33 @@ void DataFileManager::ListRules() const
 		return path1Expnded.size() < path2Expnded.size();
 	});
 
-	int index = 0;
-	int blackList = static_cast<int>(SecOption::BLACKLIST);
+	char whiteList = static_cast<char>(SecOption::WHITELIST) + '0';
+	char blackList = static_cast<char>(SecOption::BLACKLIST) + '0';
 
-	while (sortedRules[index][SEC_OPTION] == blackList)
+	unsigned index = 0;
+	cout << "\nAllowed rules:\n";
+	for (index; index < sortedRules.size(); index++)
 	{
-		cout << sortedRules[index].substr(RULE_PATH_POS,
-			sortedRules[index].find_last_of("|") - 4)
-			<< "";
+		if (sortedRules[index][SEC_OPTION] == whiteList)
+		{
+			cout << sortedRules[index].substr(RULE_PATH_POS,
+				sortedRules[index].find_last_of("|") - 4)
+				<< "\n";
+		}
+		else 
+			break;
+	}
+
+	cout << "\nDenied rules:\n";
+	for (index; index < sortedRules.size(); index++)
+	{
+		if (sortedRules[index][SEC_OPTION] == blackList)
+		{
+			cout << sortedRules[index].substr(RULE_PATH_POS,
+				sortedRules[index].find_last_of("|") - 4)
+				<< "\n";
+		}
+		else
+			break;
 	}
 }

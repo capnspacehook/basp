@@ -56,9 +56,9 @@ namespace AppSecPolicy
 		std::string GetGobalPolicySettings() const;
 		void ReorganizePolicyData();
 
-		const int iterations = 1000;	//iterations for PBKDF2
-		const int TAG_SIZE = AES::BLOCKSIZE;
-		const int KEY_SIZE = AES::MAX_KEYLENGTH;
+		const unsigned iterations = 1000;	//iterations for PBKDF2
+		const unsigned TAG_SIZE = AES::BLOCKSIZE;
+		const unsigned KEY_SIZE = AES::MAX_KEYLENGTH;
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfSalt;
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfHash;
 

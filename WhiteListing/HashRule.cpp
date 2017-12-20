@@ -34,7 +34,7 @@ const string HashRule::fileProps[5] = {
 
 //sets the 'subKey' parameter to the rule's guid
 void HashRule::CreateNewHashRule(const string &fileName,
-	const SecOption &secOption, const long long &fileSize, std::shared_ptr<std::string> subKey)
+	const SecOption &secOption, const uintmax_t &fileSize, std::shared_ptr<std::string> subKey)
 {
 	itemSize = fileSize;
 	EnumFriendlyName(fileName);
@@ -309,10 +309,6 @@ void HashRule::WriteToRegistry(const string &fileName,
 	{
 		cout << e.what() << endl;
 	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
-	}
 }
 
 void HashRule::SwitchRule(const std::string &ruleGuid, SecOption option)
@@ -372,10 +368,6 @@ void HashRule::SwitchRule(const std::string &ruleGuid, SecOption option)
 	{
 		cout << e.what() << endl;
 	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
-	}
 }
 
 void HashRule::RemoveRule(const string &guid, const SecOption &policy)
@@ -411,9 +403,5 @@ void HashRule::RemoveRule(const string &guid, const SecOption &policy)
 	catch (const exception &e)
 	{
 		cout << e.what() << endl;
-	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
 	}
 }

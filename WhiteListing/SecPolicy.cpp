@@ -51,20 +51,44 @@ void SecPolicy::TempRun(const string &path)
 	{
 		tempRuleCreation = true;
 		fs::path file = fs::path(path);
+		file.make_preferred();
 
-		long long size = fs::file_size(file);
+		uintmax_t size = fs::file_size(file);
 		if (size > 0)
 		{
 			//create temporary hash rule
 			shared_ptr<string> subKey = make_shared<string>("");
 			HashRule tempRule;
-			tempRule.CreateNewHashRule(path, SecOption::WHITELIST, size, 
-				subKey);
-			ApplyChanges(false);
 
-			createdRules++;
-			cout << "Created temporary allow rule for " << file.string()
-				<< ". Executing file now...\n\n";
+			string guid;
+			RuleFindResult result = dataFileMan.FindRule(
+				SecOption::BLACKLIST, ruleType, file.string(), guid);
+
+			if (result == RuleFindResult::NO_MATCH)
+			{
+				createdRules++;
+				tempRule.CreateNewHashRule(path, SecOption::WHITELIST, size,
+					subKey);
+				ApplyChanges(false);
+			}
+
+			else if (result == RuleFindResult::EXACT_MATCH)
+			{
+				switchedRules++;
+				tempRule.SwitchRule(guid, SecOption::WHITELIST);
+				ApplyChanges(false);
+			}
+
+			if (result == RuleFindResult::DIFF_SEC_OP)
+			{
+				skippedRules++;
+				cout << file.string() << " is already allowed.";
+			}
+
+			else
+				cout << "Temporarily allowed " << file.string();
+
+			cout << ". Executing file now...\n\n";
 
 			// start the program up
 			STARTUPINFO si;
@@ -95,8 +119,19 @@ void SecPolicy::TempRun(const string &path)
 			CloseHandle(pi.hProcess);
 			CloseHandle(pi.hThread);
 
-			tempRule.RemoveRule(*subKey, SecOption::WHITELIST);
-			cout << "Temporary rule deleted" << endl;
+			if (result == RuleFindResult::NO_MATCH)
+			{
+				removedRules++;
+				tempRule.RemoveRule(*subKey, SecOption::WHITELIST);
+				cout << "Temporary rule deleted\n";
+			}
+
+			else if (result == RuleFindResult::EXACT_MATCH)
+			{
+				switchedRules++;
+				tempRule.SwitchRule(guid, SecOption::BLACKLIST);
+				cout << "Rule switched back to deny mode.\n";
+			}
 		}
 		else
 		{
@@ -113,10 +148,6 @@ void SecPolicy::TempRun(const string &path)
 	{
 		cout << e.what() << endl;
 	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
-	}
 }
 
 //overload that temporaily whitelists 'dir', and executes 'file'
@@ -126,6 +157,9 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 	{
 		auto tempDir = fs::path(dir);
 		auto exeFile = fs::path(file);
+
+		tempDir.make_preferred();
+		exeFile.make_preferred();
 
 		tempRuleCreation = true;
 		CreatePolicy(dir, SecOption::WHITELIST);
@@ -174,14 +208,32 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 		//delete temporary rules in parallel
 		threads.clear();
 		for (const auto &tempRuleID : createdRulesData)
+		{
+			removedRules++;
 			threads.emplace_back(
 				&HashRule::RemoveRule,
 				HashRule(),
 				*get<RULE_GUID>(tempRuleID),
 				SecOption::WHITELIST);
+		}
+
+		for (auto &t : threads)
+			t.join();
+
+		threads.clear();
+		for (const auto &tempRuleID : switchedRulesData)
+		{
+			switchedRules++;
+			threads.emplace_back(
+				&HashRule::SwitchRule,
+				HashRule(),
+				*get<RULE_GUID>(tempRuleID),
+				SecOption::BLACKLIST);
+		}
 
 		//clear temp rules
 		createdRulesData.clear();
+		switchedRulesData.clear();
 	}
 	catch (const fs::filesystem_error &e)
 	{
@@ -190,10 +242,6 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 	catch (const exception &e)
 	{
 		cerr << e.what() << endl;
-	}
-	catch (...)
-	{
-		cerr << "Unknown exception" << endl;
 	}
 }
 
@@ -262,6 +310,11 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 
 	CloseHandle(pi.hProcess);
 	CloseHandle(pi.hThread);
+}
+
+void SecPolicy::ListRules() const
+{
+	dataFileMan.ListRules();
 }
 
 bool SecPolicy::SetPrivileges(const string& privName, bool enablePriv)
@@ -353,24 +406,19 @@ void SecPolicy::CheckGlobalSettings() const
 	{
 		cout << e.what() << endl;
 	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
-	}
 }
 
-//detirmine whether file passed to constructor is a 
+//detirmine whether file passed is a 
 //regular file or directory and process respectively
 void SecPolicy::EnumAttributes(const string &fileName) 
 {
 	try
 	{
-		
 		fs::path initialFile(fileName);
 		initialFile.make_preferred();
 
 		string action;
-		long long fileSize;
+		uintmax_t fileSize;
 		((bool)secOption) ? action = "Whitelisting" : action = "Blacklisting";
 
 		if (fs::is_directory(initialFile))
@@ -416,14 +464,10 @@ void SecPolicy::EnumAttributes(const string &fileName)
 	{
 		cout << e.what() << endl;
 	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
-	}
 }
 
 //recursively go through directory 
-void SecPolicy::EnumDirContents(const fs::path& dir, long long &fileSize) 
+void SecPolicy::EnumDirContents(const fs::path& dir, uintmax_t &fileSize)
 {
 	try
 	{
@@ -452,16 +496,12 @@ void SecPolicy::EnumDirContents(const fs::path& dir, long long &fileSize)
 	{
 		cout << e.what() << endl;
 	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
-	}
 }
 
 //checks whether file is a valid type as detirmined by the list 
 //in the member variable executableTypes and if it is, start creating
 //a new hash rule for the file in a new thread
-void SecPolicy::CheckValidType(const fs::path &file, const long long &fileSize) 
+void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 {
 	try
 	{
@@ -523,10 +563,6 @@ void SecPolicy::CheckValidType(const fs::path &file, const long long &fileSize)
 	{
 		cout << e.what() << endl;
 	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
-	}
 }
 
 //print how many rules were created and runtime of rule creation
@@ -544,19 +580,11 @@ void SecPolicy::PrintStats() const
 	else
 		secs = chrono::duration<double, milli>(diff).count() / 1000;
 
-	if (tempRuleCreation)
-	{
-		cout << "Created and removed " << createdRules
-			<< " temporary rules in ";
-	}
-
-	else
-	{
-		cout << "Created " << createdRules << " rules,\n"
-			<< "Switched " << switchedRules << " rules, and\n"
-			<< "Skipped " << skippedRules << " rules "
-			<< "in ";
-	}
+	cout << "Created " << createdRules << " rules,\n"
+		<< "Switched " << switchedRules << " rules,\n"
+		<< "Skipped " << skippedRules << " rules, and\n"
+		<< "Removed " << removedRules << " rules "
+		<< "in ";
 
 	if (mins > 0)
 		cout << mins << " mins, " << secs << " secs" << endl;
@@ -570,9 +598,9 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 {
 	//Windows randomly applies the rules that are written to the registry,
 	//so to persuade Windows to apply the rule changes we have to change a 
-	//global policy setting. I add a random executeable type and then remove it
+	//global policy setting. A random executeable type is added and then removed 
 	//so that it doesn't really affect anything. Changing any other of the global
-	//rules even for a split second, is a security risk
+	//rules even for a split second, is a security risk.
 	using namespace winreg;
 	try 
 	{
@@ -591,7 +619,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
 
 		//write changes to settings file
-		if (updateSettings)
+		if (updateSettings && !tempRuleCreation)
 		{
 			if (switchedRules)
 				dataFileMan.WriteToFile(switchedRulesData, true);
@@ -609,9 +637,5 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 	catch (const exception &e)
 	{
 		cout << e.what() << endl;
-	}
-	catch (...)
-	{
-		cout << "Unknown exception" << endl;
 	}
 }

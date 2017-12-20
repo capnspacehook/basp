@@ -22,7 +22,7 @@ namespace AppSecPolicy
 		}
 		void CreateNewHashRule(const std::string &fileName,
 			const AppSecPolicy::SecOption &policy,
-			const long long& fileSize, std::shared_ptr<std::string>);
+			const uintmax_t& fileSize, std::shared_ptr<std::string>);
 		void SwitchRule(const std::string &guid,
 			AppSecPolicy::SecOption option);
 		void RemoveRule(const std::string &guid,
