@@ -36,12 +36,8 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	secOption = op;
 	ruleType = rType;
 
-	fs::path pathName;
 	for (const auto &path : paths)
-	{
-		pathName.assign(path);
 		EnumAttributes(path);
-	}
 }
 
 //create a whitelisting rule, execute the file passed in, and delete the rule
@@ -245,6 +241,20 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 	}
 }
 
+//delete rules from registry
+void SecPolicy::RemoveRules(const string &path)
+{
+	ruleRemoval = true;
+	EnumAttributes(path);
+}
+
+void SecPolicy::RemoveRules(const vector<string> &paths)
+{
+	ruleRemoval = true;
+	for (const auto &path : paths)
+		EnumAttributes(path);
+}
+
 void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 {
 	STARTUPINFO si;
@@ -419,6 +429,7 @@ void SecPolicy::EnumAttributes(const string &fileName)
 
 		string action;
 		uintmax_t fileSize;
+
 		((bool)secOption) ? action = "Whitelisting" : action = "Blacklisting";
 
 		if (fs::is_directory(initialFile))
@@ -441,18 +452,28 @@ void SecPolicy::EnumAttributes(const string &fileName)
 		}
 		else
 		{
-			fileSize = fs::file_size(initialFile);
-			if (fileSize && fs::is_regular_file(initialFile))
+			if (ruleRemoval)
 			{
-				cout << action << " "
-					<< initialFile.string() << endl;
-				CheckValidType(initialFile, fileSize);
+				cout << "Removing" << initialFile.string() << endl;
+				DeleteRule(initialFile);
 			}
+
 			else
 			{
-				cout << "Can't create hash rule for " <<
-					initialFile.string() << endl;
-				exit(-1);
+				fileSize = fs::file_size(initialFile);
+				if (fileSize && fs::is_regular_file(initialFile))
+				{
+					cout << action << " "
+						<< initialFile.string() << endl;
+					CheckValidType(initialFile, fileSize);
+				}
+
+				else
+				{
+					cout << "Can't create hash rule for " <<
+						initialFile.string() << endl;
+					exit(-1);
+				}
 			}
 		}
 	}
@@ -479,9 +500,15 @@ void SecPolicy::EnumDirContents(const fs::path& dir, uintmax_t &fileSize)
 					EnumDirContents(currFile.path(), fileSize);
 				else
 				{
-					fileSize = fs::file_size(currFile);
-					if (fileSize && fs::is_regular_file(currFile))
-						CheckValidType(currFile, fileSize);
+					if (ruleRemoval)
+						DeleteRule(currFile);
+
+					else
+					{
+						fileSize = fs::file_size(currFile);
+						if (fileSize && fs::is_regular_file(currFile))
+							CheckValidType(currFile, fileSize);
+					}
 				}
 			}
 			else
@@ -515,12 +542,12 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 				extension.begin(), toupper);
 
 			//check if the file is of one of the executable types 
-			if (binary_search(executableTypes.cbegin(), 
+			if (binary_search(executableTypes.cbegin(),
 				executableTypes.cend(), extension))
 			{
 				string path;
 				string guid;
-				
+
 				string temp = file.string();
 				transform(temp.begin(), temp.end(),
 					back_inserter(path), tolower);
@@ -559,6 +586,9 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 				else if (result == RuleFindResult::EXACT_MATCH)
 					skippedRules++;
 			}
+
+			else
+				skippedRules++;
 		}
 	}
 	catch (const fs::filesystem_error &e)
@@ -569,6 +599,39 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 	{
 		cout << e.what() << endl;
 	}
+}
+
+void SecPolicy::DeleteRule(const fs::path &file)
+{
+	string path;
+	string guid;
+	string temp = file.string();
+	transform(temp.begin(), temp.end(),
+		back_inserter(path), tolower);
+
+	SecOption ruleOp = SecOption::BLACKLIST;
+	RuleFindResult result = dataFileMan.FindRule(
+		ruleOp, RuleType::HASHRULE, path, guid);
+
+	if (result != RuleFindResult::NO_MATCH)
+	{
+		if (result == RuleFindResult::DIFF_SEC_OP)
+			ruleOp = SecOption::WHITELIST;
+
+		removedRulesData.emplace_back(make_tuple(ruleOp, RuleType::HASHRULE,
+			path, make_shared<string>(guid)));
+
+		removedRules++;
+		threads.emplace_back(
+			&HashRule::RemoveRule,
+			HashRule(),
+			*get<RULE_GUID>(removedRulesData.back()),
+			ruleOp);
+	}
+
+	else
+		skippedRules++;
+
 }
 
 //print how many rules were created and runtime of rule creation
@@ -627,11 +690,14 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 		//write changes to settings file
 		if (updateSettings && !tempRuleCreation)
 		{
-			if (switchedRules)
-				dataFileMan.WriteToFile(switchedRulesData, true);
-
 			if (createdRules)
-				dataFileMan.WriteToFile(createdRulesData, false);
+				dataFileMan.WriteToFile(createdRulesData, WriteType::CREATED_RULES);
+
+			if (switchedRules)
+				dataFileMan.WriteToFile(switchedRulesData, WriteType::SWITCHED_RULES);
+
+			if (removedRules)
+				dataFileMan.WriteToFile(removedRulesData, WriteType::REMOVED_RULES);
 		}
 
 		cout << "done\n\n";

@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
 	bool validOp = false;
 	string programName = argv[0];
 	vector<string> baseOptions = {
-		"-b", "-w" , "-t", "-td", "-l", "/?" };
+		"-b", "-w" , "-t", "-td", "-l", "-r", "/?" };
 	vector<string> extndOptions = {
 		"-e", "--admin" };
 	
@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
 			if (argv[1] == baseOptions[4])
 				policy.ListRules();
 
-			if (argv[1] == baseOptions[5])
+			if (argv[1] == baseOptions[6])
 				PrintInvalidMsg(programName);
 		}
 		
@@ -129,7 +129,10 @@ int main(int argc, char *argv[])
 				}
 			}
 
-			else if (argv[1] == baseOptions[5])
+			else if (argv[1] == baseOptions[5] && ValidFile(args[1]))
+				policy.RemoveRules(args[1]);
+
+			else if (argv[1] == baseOptions[6])
 				PrintInvalidMsg(programName);
 
 			else
@@ -170,6 +173,20 @@ int main(int argc, char *argv[])
 						<< "do not contain other files/dirs entered";
 					PrintInvalidMsg(programName);
 				}
+			}
+
+			else if (argv[1] == baseOptions[5])
+			{
+				if (CheckDirConflicts(fileArgs))
+					policy.RemoveRules(fileArgs);
+
+				else
+				{
+					cout << "\nFile arguments conflict; Please enter files/dirs that "
+						<< "do not contain other files/dirs entered";
+					PrintInvalidMsg(programName);
+				}
+				
 			}
 
 			else if (argv[3] == extndOptions[0])

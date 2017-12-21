@@ -207,7 +207,7 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	return result;
 }
 
-void DataFileManager::WriteToFile(const RuleData& ruleData, bool rulesSwitched)
+void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
 {
 	try
 	{
@@ -223,7 +223,13 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, bool rulesSwitched)
 			location = get<FILE_LOCATION>(rule);
 			guid = *get<RULE_GUID>(rule);
 
-			if (rulesSwitched)
+			if (writeType == WriteType::CREATED_RULES)
+			{
+				ruleInfo.emplace_back(to_string(option) + "|" + to_string(type)
+					+ "|" + location + "|" + guid + "\n");
+			}
+
+			else if (writeType == WriteType::SWITCHED_RULES)
 			{
 				auto iterator = lower_bound(
 					rulePaths.begin(), rulePaths.end(), location);
@@ -233,14 +239,19 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, bool rulesSwitched)
 				ruleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
 			}
 
-			else
+			else 
 			{
-				ruleInfo.emplace_back(to_string(option) + "|" + to_string(type)
-					+ "|" + location + "|" + guid + "\n");
+				auto iterator = lower_bound(
+					rulePaths.begin(), rulePaths.end(), location);
+
+				std::size_t index = std::distance(rulePaths.begin(), iterator);
+
+				rulePaths.erase(iterator);
+				ruleInfo.erase(ruleInfo.begin() + index);
 			}
 		}
 
-		if (ruleInfo.size())
+		if (ruleInfo.size() || writeType == WriteType::REMOVED_RULES)
 			ReorganizePolicyData();
 	}
 	catch (const exception &e)
@@ -252,7 +263,7 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, bool rulesSwitched)
 void DataFileManager::ReorganizePolicyData()
 {
 	sort(ruleInfo.begin(), ruleInfo.end(),
-		[&](string &str1, string &str2)
+		[&](const string &str1, const string &str2)
 		{
 			return str1.substr(RULE_PATH_POS,
 				str1.find_last_of("|") - 4)

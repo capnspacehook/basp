@@ -37,6 +37,8 @@ namespace AppSecPolicy
 			const SecOption &op, RuleType = RuleType::HASHRULE);
 		void TempRun(const std::string &path);
 		void TempRun(const std::string &dir, const std::string &exeFile);
+		void RemoveRules(const std::string &path);
+		void RemoveRules(const std::vector<std::string> &paths);
 		void EnumLoadedDLLs(const std::string &exeFile);
 		void ListRules() const;
 
@@ -45,6 +47,7 @@ namespace AppSecPolicy
 		bool SetPrivileges(const std::string&, bool);
 		void EnumAttributes(const std::string&);
 		void EnumDirContents(const fs::path&, uintmax_t&);
+		void DeleteRule(const fs::path&);
 		void CheckValidType(const fs::path&, const uintmax_t&);
 		void PrintStats() const;
 		void ApplyChanges(bool);
@@ -63,6 +66,8 @@ namespace AppSecPolicy
 			"URL", "VB", "VBE", "VBS", "VBSCRIPT", "WSC", "XAML", "XBAP", "XPI" };
 
 		bool tempRuleCreation = false;
+		bool ruleRemoval = false;
+
 		std::vector<std::thread> threads;
 
 		SecOption secOption;
@@ -70,6 +75,7 @@ namespace AppSecPolicy
 
 		RuleData createdRulesData;
 		RuleData switchedRulesData;
+		RuleData removedRulesData;
 
 		//statistical variables
 		std::size_t createdRules = 0;

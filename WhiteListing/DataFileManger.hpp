@@ -46,7 +46,7 @@ namespace AppSecPolicy
 		void SetNewPassword();
 		RuleFindResult FindRule(AppSecPolicy::SecOption, RuleType,
 			const std::string&, std::string&) const;
-		void WriteToFile(const RuleData&, bool);
+		void WriteToFile(const RuleData&, WriteType);
 		void ListRules() const;
 
 	private:
