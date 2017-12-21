@@ -52,7 +52,7 @@ namespace AppSecPolicy
 		DataFileManager dataFileMan;
 
 		//program settings
-		float dllWaitSecs = 3;
+		unsigned dllWaitSecs = 3;
 
 		//file extensions that will be enforced
 		std::vector<std::string> executableTypes = {

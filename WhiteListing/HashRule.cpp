@@ -235,11 +235,13 @@ inline bool HashRule::MakeGUID()
 {
 	bool result;
 	GUID rGUID;
-	wchar_t szGuidW[40] = { 0 };
-	char szGuidA[40] = { 0 };
 	HRESULT hr = CoCreateGuid(&rGUID);
+
 	if (hr == S_OK)
 	{
+		wchar_t szGuidW[40] = { 0 };
+		char szGuidA[40] = { 0 };
+
 		StringFromGUID2(rGUID, szGuidW, 40);
 		WideCharToMultiByte(CP_ACP, 0, szGuidW, -1, szGuidA, 40, NULL, NULL);
 		

@@ -68,8 +68,6 @@ bool DataFileManager::OpenPolicyFile()
 		while (getline(iss, temp))
 		{
 			ruleInfo.emplace_back(temp + "\n");
-
-			transform(temp.begin(), temp.end(), temp.begin(), tolower);
 			rulePaths.emplace_back(temp.substr(
 				RULE_PATH_POS, temp.find_last_of("|") - 4));
 		}
@@ -167,33 +165,16 @@ string DataFileManager::GetGobalPolicySettings() const
 	}
 }
 
-void DataFileManager::ReorganizePolicyData()
-{
-	//sort rule paths, with parent directories first
-	sort(ruleInfo.begin(), ruleInfo.end());
-
-	policyData->clear();
-
-	for (const auto& line : ruleInfo)
-		*policyData += line;
-
-	policyDataModified = true;
-}
-
 RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	const string &path, string &guid) const
 {
-	string findPath;
-	transform(path.begin(), path.end(),
-		findPath.begin(), tolower);
-
 	SecOption findOp = option;
 	RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
 
 	if (!rulePaths.size())
 		return result;
-
+	
 	auto iterator = lower_bound(rulePaths.begin(), rulePaths.end(), path);
 	
 	if (iterator != rulePaths.end() && !(path < *iterator))
@@ -268,9 +249,28 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, bool rulesSwitched)
 	}
 }
 
+void DataFileManager::ReorganizePolicyData()
+{
+	sort(ruleInfo.begin(), ruleInfo.end(),
+		[&](string &str1, string &str2)
+		{
+			return str1.substr(RULE_PATH_POS,
+				str1.find_last_of("|") - 4)
+				< str2.substr(RULE_PATH_POS,
+				str2.find_last_of("|") - 4);
+		});
+
+	policyData->clear();
+
+	for (const auto& line : ruleInfo)
+		*policyData += line;
+
+	policyDataModified = true;
+}
+
 void DataFileManager::CheckPassword()
 {
-	string salt, password;
+	string password;
 	bool validPwd;
 	
 	//get salt from beginning of file
@@ -385,35 +385,11 @@ void DataFileManager::ListRules() const
 		fs::path path2(str2.substr(RULE_PATH_POS,
 			str2.find_last_of("|") - 4));
 
-		//if parent directories are the same, compare filenames
-		if (path1.parent_path() == path2.parent_path())
-			return path1 < path2;
+		if (path1.parent_path() != path2.parent_path())
+			return path1.parent_path() < path2.parent_path();
 
-		vector<string> path1Expnded;
-		vector<string> path2Expnded;
-
-		for (const auto &part : path1)
-			path1Expnded.emplace_back(part.string());
-
-		for (const auto &part : path2)
-			path2Expnded.emplace_back(part.string());
-
-		//if paths have same amount of stems, compare full paths
-		if (path1Expnded.size() == path2Expnded.size())
-			return path1 < path2;
-
-		int minSize;
-		path1Expnded.size() <= path2Expnded.size()
-			? minSize = path1Expnded.size()
-			: minSize = path2Expnded.size();
-
-		//sort by first differing stem
-		for (int i = 0; i < minSize - 1; i++)
-			if (path1Expnded[i] != path2Expnded[i])
-				return path1Expnded[i] < path2Expnded[i];
-
-		//if sizes differ and no stems are the same, sort by number of stems
-		return path1Expnded.size() < path2Expnded.size();
+		else 
+			return path1.filename() < path2.filename();
 	});
 
 	char whiteList = static_cast<char>(SecOption::WHITELIST) + '0';

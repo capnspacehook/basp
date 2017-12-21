@@ -518,21 +518,27 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 			if (binary_search(executableTypes.cbegin(), 
 				executableTypes.cend(), extension))
 			{
+				string path;
 				string guid;
+				
+				string temp = file.string();
+				transform(temp.begin(), temp.end(),
+					back_inserter(path), tolower);
+
 				RuleFindResult result = dataFileMan.FindRule(
-					secOption, ruleType, file.string(), guid);
+					secOption, ruleType, path, guid);
 
 				if (result == RuleFindResult::NO_MATCH)
 				{
 					createdRules++;
 
 					createdRulesData.emplace_back(make_tuple(secOption, ruleType,
-						file.string(), make_shared<string>(guid)));
+						path, make_shared<string>(guid)));
 
 					threads.emplace_back(
 						&HashRule::CreateNewHashRule,
 						HashRule(),
-						file.string(),
+						path,
 						secOption,
 						fileSize,
 						get<RULE_GUID>(createdRulesData.back()));
@@ -542,7 +548,7 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 					switchedRules++;
 
 					switchedRulesData.emplace_back(make_tuple(secOption, ruleType,
-						file.string(), make_shared<string>(guid)));
+						path, make_shared<string>(guid)));
 
 					threads.emplace_back(
 						&HashRule::SwitchRule,
