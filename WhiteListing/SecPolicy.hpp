@@ -40,7 +40,7 @@ namespace AppSecPolicy
 		void RemoveRules(const std::string &path);
 		void RemoveRules(const std::vector<std::string> &paths);
 		void EnumLoadedDLLs(const std::string &exeFile);
-		void ListRules() const;
+		void ListRules();
 
 	private:
 		void CheckGlobalSettings() const;

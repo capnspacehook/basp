@@ -58,13 +58,18 @@ bool DataFileManager::OpenPolicyFile()
 	{
 		*policyData = temp;
 		temp.clear();
+
+		unsigned ruleNum = policyData->size() - 2;
 		
 		istringstream iss(*policyData);
 
 		//skip header 
 		getline(iss, temp);
 		//get global settings
-		getline(iss, temp);
+		getline(iss, globalPolicySettings);
+
+		ruleInfo.reserve(ruleNum);
+		rulePaths.reserve(ruleNum);
 		while (getline(iss, temp))
 		{
 			ruleInfo.emplace_back(temp + "\n");
@@ -225,29 +230,46 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
 
 			if (writeType == WriteType::CREATED_RULES)
 			{
+				rulesAdded = true;
+
+				rulePaths.emplace_back(location);
+
 				ruleInfo.emplace_back(to_string(option) + "|" + to_string(type)
 					+ "|" + location + "|" + guid + "\n");
 			}
 
-			else if (writeType == WriteType::SWITCHED_RULES)
-			{
-				auto iterator = lower_bound(
-					rulePaths.begin(), rulePaths.end(), location);
-
-				std::size_t index = std::distance(rulePaths.begin(), iterator);
-
-				ruleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
-			}
-
 			else 
 			{
+				if (rulesAdded)
+				{
+					rulesSorted = true;
+
+					sort(ruleInfo.begin(), ruleInfo.end());
+
+					rulePaths.clear();
+					rulePaths.reserve(ruleInfo.size());
+					for (const auto& rule : ruleInfo)
+					{
+						rulePaths.emplace_back(rule.substr(RULE_PATH_POS,
+							rule.find_last_of("|") - 4));
+					}
+
+					rulesAdded = false;
+				}
+
 				auto iterator = lower_bound(
 					rulePaths.begin(), rulePaths.end(), location);
 
 				std::size_t index = std::distance(rulePaths.begin(), iterator);
 
-				rulePaths.erase(iterator);
-				ruleInfo.erase(ruleInfo.begin() + index);
+				if (writeType == WriteType::SWITCHED_RULES)
+					ruleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+
+				else
+				{
+					rulePaths.erase(iterator);
+					ruleInfo.erase(ruleInfo.begin() + index);
+				}
 			}
 		}
 
@@ -262,14 +284,8 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
 
 void DataFileManager::ReorganizePolicyData()
 {
-	sort(ruleInfo.begin(), ruleInfo.end(),
-		[&](const string &str1, const string &str2)
-		{
-			return str1.substr(RULE_PATH_POS,
-				str1.find_last_of("|") - 4)
-				< str2.substr(RULE_PATH_POS,
-				str2.find_last_of("|") - 4);
-		});
+	if (!rulesSorted)
+		sort(ruleInfo.begin(), ruleInfo.end());
 
 	policyData->clear();
 
@@ -277,6 +293,14 @@ void DataFileManager::ReorganizePolicyData()
 		*policyData += line;
 
 	policyDataModified = true;
+}
+
+void DataFileManager::VerifyPassword()
+{
+	if (fs::exists(policyFileName))
+		CheckPassword();
+	else
+		SetNewPassword();
 }
 
 void DataFileManager::CheckPassword()

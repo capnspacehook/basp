@@ -31,17 +31,18 @@ namespace AppSecPolicy
 			kdfSalt.assign(new SecByteBlock(KEY_SIZE));
 			kdfHash.assign(new SecByteBlock(KEY_SIZE * 2));
 			policyData.assign(new std::string);
-			
-			if (fs::exists(policyFileName))
-				CheckPassword();
-			else
-				SetNewPassword();
 		}
 		~DataFileManager()
 		{
 			ClosePolicyFile();
 		}
 
+		std::string GetGlobalSettings() const
+		{
+			return globalPolicySettings;
+		}
+
+		void VerifyPassword();
 		void CheckPassword();
 		void SetNewPassword();
 		RuleFindResult FindRule(AppSecPolicy::SecOption, RuleType,
@@ -56,7 +57,7 @@ namespace AppSecPolicy
 		std::string GetGobalPolicySettings() const;
 		void ReorganizePolicyData();
 
-		const unsigned iterations = 1000;	//iterations for PBKDF2
+		const unsigned iterations = 100;	//iterations for PBKDF2
 		const unsigned TAG_SIZE = AES::BLOCKSIZE;
 		const unsigned KEY_SIZE = AES::MAX_KEYLENGTH;
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfSalt;
@@ -65,9 +66,13 @@ namespace AppSecPolicy
 		const std::string policyFileName = "Policy Settings.dat";
 		const std::string policyFileHeader = "Policy Settings\n";
 		ProtectedPtr<std::string, StringSerializer> policyData;
+		
+		std::string globalPolicySettings;
 		std::vector<std::string> ruleInfo;		//data of already created rules
 		std::vector<std::string> rulePaths;		//paths of created rules for searching
 		
+		bool rulesAdded = false;
+		bool rulesSorted = false;
 		bool policyDataModified = false;
 
 		std::vector<std::string> executableTypes = {

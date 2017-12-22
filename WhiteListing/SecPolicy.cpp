@@ -24,6 +24,8 @@ namespace fs = std::experimental::filesystem;
 void SecPolicy::CreatePolicy(const string &path, const SecOption &op, 
 	RuleType rType)
 {
+	dataFileMan.VerifyPassword();
+
 	secOption = op;
 	ruleType = rType;
 	EnumAttributes(path);
@@ -33,6 +35,8 @@ void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
 void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	RuleType rType)
 {
+	dataFileMan.VerifyPassword();
+
 	secOption = op;
 	ruleType = rType;
 
@@ -45,6 +49,8 @@ void SecPolicy::TempRun(const string &path)
 {
 	try
 	{
+		dataFileMan.VerifyPassword();
+
 		tempRuleCreation = true;
 		fs::path file = fs::path(path);
 		file.make_preferred();
@@ -151,6 +157,8 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 {
 	try
 	{
+		dataFileMan.VerifyPassword();
+
 		auto tempDir = fs::path(dir);
 		auto exeFile = fs::path(file);
 
@@ -244,12 +252,16 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 //delete rules from registry
 void SecPolicy::RemoveRules(const string &path)
 {
+	dataFileMan.VerifyPassword();
+
 	ruleRemoval = true;
 	EnumAttributes(path);
 }
 
 void SecPolicy::RemoveRules(const vector<string> &paths)
 {
+	dataFileMan.VerifyPassword();
+
 	ruleRemoval = true;
 	for (const auto &path : paths)
 		EnumAttributes(path);
@@ -322,8 +334,10 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 	CloseHandle(pi.hThread);
 }
 
-void SecPolicy::ListRules() const
+void SecPolicy::ListRules()
 {
+	dataFileMan.VerifyPassword();
+
 	dataFileMan.ListRules();
 }
 
@@ -430,20 +444,25 @@ void SecPolicy::EnumAttributes(const string &fileName)
 		string action;
 		uintmax_t fileSize;
 
-		((bool)secOption) ? action = "Whitelisting" : action = "Blacklisting";
-
 		if (fs::is_directory(initialFile))
 		{
 			if (tempRuleCreation)
 			{
-				((bool)secOption) ? action = "whitelisting" 
-					: action = "blacklisting";
-
-				cout << "Temporaily " << action << " files in "
+				cout << "Temporaily whitelisting files in "
 					<< initialFile.string()  << "..." << endl;
 			}
+
+			else if (ruleRemoval)
+			{
+				cout << "Removing rules in " << initialFile.string()
+					<< "..." << endl;
+			}
+
 			else
 			{
+				((bool)secOption) ? action = "Whitelisting" 
+					: action = "Blacklisting";
+
 				cout << action << " files in "
 					<< initialFile.string() << "..." << endl;
 			}
@@ -463,8 +482,12 @@ void SecPolicy::EnumAttributes(const string &fileName)
 				fileSize = fs::file_size(initialFile);
 				if (fileSize && fs::is_regular_file(initialFile))
 				{
+					((bool)secOption) ? action = "Whitelisting"
+						: action = "Blacklisting";
+
 					cout << action << " "
 						<< initialFile.string() << endl;
+
 					CheckValidType(initialFile, fileSize);
 				}
 

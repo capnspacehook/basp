@@ -80,8 +80,14 @@ int main(int argc, char *argv[])
 			if (argv[1] == baseOptions[4])
 				policy.ListRules();
 
-			if (argv[1] == baseOptions[6])
+			else if (argv[1] == baseOptions[6])
 				PrintInvalidMsg(programName);
+
+			else
+			{
+				cout << "\nInvalid option";
+				PrintInvalidMsg(programName);
+			}
 		}
 		
 		//if user passed in one option and one file
