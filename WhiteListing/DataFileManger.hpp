@@ -57,7 +57,7 @@ namespace AppSecPolicy
 		std::string GetGobalPolicySettings() const;
 		void ReorganizePolicyData();
 
-		const unsigned iterations = 100;	//iterations for PBKDF2
+		const unsigned iterations = 1000;	//iterations for PBKDF2
 		const unsigned TAG_SIZE = AES::BLOCKSIZE;
 		const unsigned KEY_SIZE = AES::MAX_KEYLENGTH;
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfSalt;
@@ -72,7 +72,7 @@ namespace AppSecPolicy
 		std::vector<std::string> rulePaths;		//paths of created rules for searching
 		
 		bool rulesAdded = false;
-		bool rulesSorted = false;
+		bool rulesNotSorted = true;
 		bool policyDataModified = false;
 
 		std::vector<std::string> executableTypes = {

@@ -59,17 +59,12 @@ bool DataFileManager::OpenPolicyFile()
 		*policyData = temp;
 		temp.clear();
 
-		unsigned ruleNum = policyData->size() - 2;
-		
 		istringstream iss(*policyData);
 
 		//skip header 
 		getline(iss, temp);
 		//get global settings
 		getline(iss, globalPolicySettings);
-
-		ruleInfo.reserve(ruleNum);
-		rulePaths.reserve(ruleNum);
 		while (getline(iss, temp))
 		{
 			ruleInfo.emplace_back(temp + "\n");
@@ -233,7 +228,6 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
 				rulesAdded = true;
 
 				rulePaths.emplace_back(location);
-
 				ruleInfo.emplace_back(to_string(option) + "|" + to_string(type)
 					+ "|" + location + "|" + guid + "\n");
 			}
@@ -242,12 +236,16 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
 			{
 				if (rulesAdded)
 				{
-					rulesSorted = true;
-
-					sort(ruleInfo.begin(), ruleInfo.end());
+					sort(ruleInfo.begin(), ruleInfo.end(),
+						[&](const string &str1, const string &str2)
+						{
+							return str1.substr(RULE_PATH_POS,
+								str1.find_last_of("|") - 4)
+								< str2.substr(RULE_PATH_POS,
+								str2.find_last_of("|") - 4);
+						});
 
 					rulePaths.clear();
-					rulePaths.reserve(ruleInfo.size());
 					for (const auto& rule : ruleInfo)
 					{
 						rulePaths.emplace_back(rule.substr(RULE_PATH_POS,
@@ -255,6 +253,7 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
 					}
 
 					rulesAdded = false;
+					rulesNotSorted = false;
 				}
 
 				auto iterator = lower_bound(
@@ -284,8 +283,17 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
 
 void DataFileManager::ReorganizePolicyData()
 {
-	if (!rulesSorted)
-		sort(ruleInfo.begin(), ruleInfo.end());
+	if (rulesNotSorted)
+	{
+		sort(ruleInfo.begin(), ruleInfo.end(),
+			[&](const string &str1, const string &str2)
+			{
+				return str1.substr(RULE_PATH_POS,
+					str1.find_last_of("|") - 4)
+					< str2.substr(RULE_PATH_POS,
+					str2.find_last_of("|") - 4);
+			});
+	}
 
 	policyData->clear();
 
@@ -301,6 +309,8 @@ void DataFileManager::VerifyPassword()
 		CheckPassword();
 	else
 		SetNewPassword();
+
+	cout << endl;
 }
 
 void DataFileManager::CheckPassword()

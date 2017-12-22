@@ -25,6 +25,7 @@ void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
 	RuleType rType)
 {
 	dataFileMan.VerifyPassword();
+	StartTimer();
 
 	secOption = op;
 	ruleType = rType;
@@ -36,6 +37,7 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	RuleType rType)
 {
 	dataFileMan.VerifyPassword();
+	StartTimer();
 
 	secOption = op;
 	ruleType = rType;
@@ -50,6 +52,7 @@ void SecPolicy::TempRun(const string &path)
 	try
 	{
 		dataFileMan.VerifyPassword();
+		StartTimer();
 
 		tempRuleCreation = true;
 		fs::path file = fs::path(path);
@@ -158,6 +161,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 	try
 	{
 		dataFileMan.VerifyPassword();
+		StartTimer();
 
 		auto tempDir = fs::path(dir);
 		auto exeFile = fs::path(file);
@@ -175,8 +179,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 
 		ApplyChanges(false);
 
-		cout << "\nCreated temporary allow rules in " << tempDir.string()
-			<< ". Executing " << exeFile.string() << " now...\n\n";
+		cout << ". Executing " << exeFile.string() << " now...\n\n";
 
 		// start the program up
 		STARTUPINFO si;
@@ -209,6 +212,8 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 		CloseHandle(pi.hProcess);
 		CloseHandle(pi.hThread);
 
+		cout << "Reverting temporary changes...";
+
 		//delete temporary rules in parallel
 		threads.clear();
 		for (const auto &tempRuleID : createdRulesData)
@@ -235,6 +240,8 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 				SecOption::BLACKLIST);
 		}
 
+		cout << "done" << endl;
+
 		//clear temp rules
 		createdRulesData.clear();
 		switchedRulesData.clear();
@@ -253,6 +260,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 void SecPolicy::RemoveRules(const string &path)
 {
 	dataFileMan.VerifyPassword();
+	StartTimer();
 
 	ruleRemoval = true;
 	EnumAttributes(path);
@@ -261,6 +269,7 @@ void SecPolicy::RemoveRules(const string &path)
 void SecPolicy::RemoveRules(const vector<string> &paths)
 {
 	dataFileMan.VerifyPassword();
+	StartTimer();
 
 	ruleRemoval = true;
 	for (const auto &path : paths)
@@ -337,6 +346,7 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 void SecPolicy::ListRules()
 {
 	dataFileMan.VerifyPassword();
+	StartTimer();
 
 	dataFileMan.ListRules();
 }
@@ -449,13 +459,13 @@ void SecPolicy::EnumAttributes(const string &fileName)
 			if (tempRuleCreation)
 			{
 				cout << "Temporaily whitelisting files in "
-					<< initialFile.string()  << "..." << endl;
+					<< initialFile.string()  << "...";
 			}
 
 			else if (ruleRemoval)
 			{
 				cout << "Removing rules in " << initialFile.string()
-					<< "..." << endl;
+					<< "...";
 			}
 
 			else
@@ -464,17 +474,19 @@ void SecPolicy::EnumAttributes(const string &fileName)
 					: action = "Blacklisting";
 
 				cout << action << " files in "
-					<< initialFile.string() << "..." << endl;
+					<< initialFile.string() << "...";
 			}
 			
 			EnumDirContents(initialFile, fileSize);
+			cout << "done" << endl;
 		}
 		else
 		{
 			if (ruleRemoval)
 			{
-				cout << "Removing" << initialFile.string() << endl;
+				cout << "Removing" << initialFile.string();
 				DeleteRule(initialFile);
+				cout << "done" << endl;
 			}
 
 			else
@@ -486,9 +498,10 @@ void SecPolicy::EnumAttributes(const string &fileName)
 						: action = "Blacklisting";
 
 					cout << action << " "
-						<< initialFile.string() << endl;
+						<< initialFile.string();
 
 					CheckValidType(initialFile, fileSize);
+					cout << "done" << endl;
 				}
 
 				else

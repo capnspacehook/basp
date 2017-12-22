@@ -45,6 +45,10 @@ namespace AppSecPolicy
 	private:
 		void CheckGlobalSettings() const;
 		bool SetPrivileges(const std::string&, bool);
+		void StartTimer()
+		{
+			startTime = std::chrono::high_resolution_clock::now();
+		}
 		void EnumAttributes(const std::string&);
 		void EnumDirContents(const fs::path&, uintmax_t&);
 		void DeleteRule(const fs::path&);
@@ -82,7 +86,6 @@ namespace AppSecPolicy
 		std::size_t switchedRules = 0;
 		std::size_t skippedRules = 0;
 		std::size_t removedRules = 0;
-		std::chrono::time_point<std::chrono::steady_clock> startTime =
-			std::chrono::high_resolution_clock::now();
+		std::chrono::time_point<std::chrono::steady_clock> startTime;
 	};
 }
