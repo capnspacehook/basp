@@ -19,7 +19,7 @@ namespace AppSecPolicy
 	public:
 		explicit SecPolicy()
 		{
-			CheckGlobalSettings();
+			
 		};
 		~SecPolicy()
 		{
@@ -29,6 +29,11 @@ namespace AppSecPolicy
 
 			ApplyChanges(true);
 			PrintStats();
+		}
+
+		void SetPasswordGuess(std::string& pwd)
+		{
+			passwordGuess = std::move(pwd);
 		}
 
 		void CreatePolicy(const std::string &path,
@@ -43,7 +48,7 @@ namespace AppSecPolicy
 		void ListRules();
 
 	private:
-		void CheckGlobalSettings() const;
+		void CheckGlobalSettings();
 		bool SetPrivileges(const std::string&, bool);
 		void StartTimer()
 		{
@@ -56,18 +61,14 @@ namespace AppSecPolicy
 		void PrintStats() const;
 		void ApplyChanges(bool);
 
+		std::string passwordGuess;
 		DataFileManager dataFileMan;
 
 		//program settings
 		unsigned dllWaitSecs = 3;
 
 		//file extensions that will be enforced
-		std::vector<std::string> executableTypes = {
-			"ADE", "ADP", "APPLICATION", "BAS", "BAT", "BGI", "CHM", "CMD", "COM", 
-			"CPL", "CRT", "DIAGCAB", "DLL", "EXE", "HLP", "HTA", "INF", "INS", 
-			"ISP", "JS", "JSE", "LNK", "MDB", "MDE", "MSC", "MSI", "MSP", "MST", 
-			"OCX", "PCD", "PIF", "PS1", "PS2", "PSM", "REG", "SCR", "SCT", "SHS", 
-			"URL", "VB", "VBE", "VBS", "VBSCRIPT", "WSC", "XAML", "XBAP", "XPI" };
+		std::vector<std::string> executableTypes;
 
 		bool tempRuleCreation = false;
 		bool ruleRemoval = false;

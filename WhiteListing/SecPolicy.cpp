@@ -8,8 +8,7 @@
 #include <exception>
 #include <algorithm>
 #include <iostream>
-#include <fstream>
-#include <utility>
+#include <sstream>
 #include <memory>
 #include <chrono>
 #include <thread>
@@ -24,7 +23,8 @@ namespace fs = std::experimental::filesystem;
 void SecPolicy::CreatePolicy(const string &path, const SecOption &op, 
 	RuleType rType)
 {
-	dataFileMan.VerifyPassword();
+	dataFileMan.VerifyPassword(passwordGuess);
+	CheckGlobalSettings();
 	StartTimer();
 
 	secOption = op;
@@ -36,7 +36,8 @@ void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
 void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	RuleType rType)
 {
-	dataFileMan.VerifyPassword();
+	dataFileMan.VerifyPassword(passwordGuess);
+	CheckGlobalSettings();
 	StartTimer();
 
 	secOption = op;
@@ -51,7 +52,8 @@ void SecPolicy::TempRun(const string &path)
 {
 	try
 	{
-		dataFileMan.VerifyPassword();
+		dataFileMan.VerifyPassword(passwordGuess);
+		CheckGlobalSettings();
 		StartTimer();
 
 		tempRuleCreation = true;
@@ -160,7 +162,8 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 {
 	try
 	{
-		dataFileMan.VerifyPassword();
+		dataFileMan.VerifyPassword(passwordGuess);
+		CheckGlobalSettings();
 		StartTimer();
 
 		auto tempDir = fs::path(dir);
@@ -259,7 +262,8 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 //delete rules from registry
 void SecPolicy::RemoveRules(const string &path)
 {
-	dataFileMan.VerifyPassword();
+	dataFileMan.VerifyPassword(passwordGuess);
+	CheckGlobalSettings();
 	StartTimer();
 
 	ruleRemoval = true;
@@ -268,7 +272,8 @@ void SecPolicy::RemoveRules(const string &path)
 
 void SecPolicy::RemoveRules(const vector<string> &paths)
 {
-	dataFileMan.VerifyPassword();
+	dataFileMan.VerifyPassword(passwordGuess);
+	CheckGlobalSettings();
 	StartTimer();
 
 	ruleRemoval = true;
@@ -345,7 +350,8 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 
 void SecPolicy::ListRules()
 {
-	dataFileMan.VerifyPassword();
+	dataFileMan.VerifyPassword(passwordGuess);
+	CheckGlobalSettings();
 	StartTimer();
 
 	dataFileMan.ListRules();
@@ -407,7 +413,7 @@ bool SecPolicy::SetPrivileges(const string& privName, bool enablePriv)
 //makes sure all the nessesary settings are in place to apply a SRP policy,
 //if a computer has never had policy applied before it will be missing
 //some of these settings. Also check if values in registry are what they should be
-void SecPolicy::CheckGlobalSettings() const
+void SecPolicy::CheckGlobalSettings()
 {
 	using namespace winreg;
 	try 
@@ -416,6 +422,16 @@ void SecPolicy::CheckGlobalSettings() const
 			HKEY_LOCAL_MACHINE,
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
 			KEY_READ | KEY_WRITE);
+
+		string globalSettings = dataFileMan.GetGlobalSettings();
+		string exetensions = globalSettings.substr(globalSettings.find_last_of('|') + 1,
+			globalSettings.length());
+
+		string type;
+		istringstream iss(exetensions);
+
+		while (getline(iss, type, ','))
+			executableTypes.emplace_back(type);
 
 		vector<pair<string, DWORD>> keys = policySettings.EnumValues();
 
@@ -427,10 +443,30 @@ void SecPolicy::CheckGlobalSettings() const
 			policySettings.SetDwordValue("PolicyScope", 0);
 			policySettings.SetDwordValue("TransparentEnabled", 1);
 		}
+		
+		if (globalSettings != dataFileMan.GetCurrentPolicySettings())
+		{
+			cout << "Proceed with caution! Unauthorized changes have been made "
+				<< "to the global policy settings.\n"
+				<< "Correct settings were reapplied.\n\n";
 
-		//if what's in the registry differs from what we have, update the registry
-		if (executableTypes != policySettings.GetMultiStringValue("ExecutableTypes"))
+			policySettings.SetDwordValue("AuthenticodeEnabled", 
+				static_cast<int>(globalSettings[AUTHENTICODE_ENABLED] - '0'));
+
+			int defaultLevel = static_cast<int>(globalSettings[DEFAULT_LEVEL] - '0');
+			if (defaultLevel == 1)
+				defaultLevel = 262144;
+
+			policySettings.SetDwordValue("DefaultLevel", defaultLevel);
+
 			policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+
+			policySettings.SetDwordValue("PolicyScope", 
+				static_cast<int>(globalSettings[POLCIY_SCOPE] - '0'));
+
+			policySettings.SetDwordValue("TransparentEnabled", 
+				static_cast<int>(globalSettings[TRANSPARENT_ENABLED] - '0'));
+		}
 	}
 	catch (const RegException &e)
 	{

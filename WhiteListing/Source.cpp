@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
 	vector<string> baseOptions = {
 		"-b", "-w" , "-t", "-td", "-l", "-r", "/?" };
 	vector<string> extndOptions = {
-		"-e", "--admin" };
+		"-e", "--admin", "--password" };
 	
 	//get the name of the program
 	programName = programName.substr(
@@ -150,18 +150,45 @@ int main(int argc, char *argv[])
 		//if user passed multiple files/options
 		else if (argc > 3)
 		{
-			int count = 0;
+			bool cmdPasswd = false;
+			bool invalidFile = false;
 			vector<string> fileArgs;
 			for (int i = 2; i < argc; i++)
 			{
+				if (cmdPasswd)
+					continue;
+
 				if (ValidFile(argv[i]))
 					fileArgs.emplace_back(argv[i]);
 
+				else if (argv[i] == extndOptions[2])
+				{
+					if (i + 1 <= argc)
+					{
+						policy.SetPasswordGuess(args[i]);
+						cmdPasswd = true;
+						continue;
+					}
+
+					else
+					{
+						cout << "Password must not be blank";
+						PrintInvalidMsg(programName);
+					}
+				}
+
 				else
-					count++;
+				{
+					invalidFile = true;
+					break;
+				}
 			}
-			if (count == argc - 2)
+
+			if (invalidFile)
+			{
+				cout << "Invalid file path";
 				PrintInvalidMsg(programName);
+			}
 
 			else if (argv[1] == baseOptions[0] || argv[1] == baseOptions[1])
 			{
@@ -214,7 +241,7 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	//system("pause");
+	system("pause");
 }
 
 void CheckElevated()

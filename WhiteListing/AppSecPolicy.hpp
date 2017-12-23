@@ -11,6 +11,11 @@ namespace AppSecPolicy
 	const int FILE_LOCATION = 2;
 	const int RULE_GUID = 3;
 
+	const int AUTHENTICODE_ENABLED = 0;
+	const int DEFAULT_LEVEL = 2;
+	const int POLCIY_SCOPE = 4;
+	const int TRANSPARENT_ENABLED = 6;
+
 	enum class SecOption { BLACKLIST, WHITELIST };
 	enum class RuleType { HASHRULE, PATHRULE };
 	enum class WriteType { CREATED_RULES, SWITCHED_RULES, REMOVED_RULES };

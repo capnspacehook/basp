@@ -97,7 +97,7 @@ void DataFileManager::ClosePolicyFile()
 	{
 		//prepend header and global policy settings
 		policyData->insert(0, policyFileHeader);
-		policyData->insert(policyFileHeader.length(), GetGobalPolicySettings());
+		policyData->insert(policyFileHeader.length(), GetCurrentPolicySettings() + '\n');
 
 		//prepend dummy data that will be skipped
 		policyData->insert(0, KEY_SIZE, 'A');
@@ -119,7 +119,7 @@ void DataFileManager::ClosePolicyFile()
 	policyData.ProtectMemory(true);
 }
 
-string DataFileManager::GetGobalPolicySettings() const
+string DataFileManager::GetCurrentPolicySettings() const
 {
 	using namespace winreg;
 
@@ -151,7 +151,8 @@ string DataFileManager::GetGobalPolicySettings() const
 		for (const auto& type : exeTypes)
 			policySettings += type + ",";
 
-		policySettings[policySettings.length() - 1] = '\n';
+		policySettings.pop_back();
+		//policySettings[policySettings.length() - 1] = '\n';
 
 		return policySettings;
 	}
@@ -172,7 +173,7 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
 
-	if (!rulePaths.size())
+	if (rulePaths.size() == 0)
 		return result;
 	
 	auto iterator = lower_bound(rulePaths.begin(), rulePaths.end(), path);
@@ -259,7 +260,7 @@ void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
 				auto iterator = lower_bound(
 					rulePaths.begin(), rulePaths.end(), location);
 
-				std::size_t index = std::distance(rulePaths.begin(), iterator);
+				size_t index = distance(rulePaths.begin(), iterator);
 
 				if (writeType == WriteType::SWITCHED_RULES)
 					ruleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
@@ -303,20 +304,23 @@ void DataFileManager::ReorganizePolicyData()
 	policyDataModified = true;
 }
 
-void DataFileManager::VerifyPassword()
+void DataFileManager::VerifyPassword(string& guessPwd)
 {
 	if (fs::exists(policyFileName))
-		CheckPassword();
+		CheckPassword(guessPwd);
 	else
 		SetNewPassword();
 
 	cout << endl;
 }
 
-void DataFileManager::CheckPassword()
+void DataFileManager::CheckPassword(string& guessPwd)
 {
-	string password;
 	bool validPwd;
+	bool cmdPwd = true;
+
+	if (guessPwd.size() == 0)
+		cmdPwd = false;
 	
 	//get salt from beginning of file
 	FileSource encPolicyFile(policyFileName.c_str(), false);
@@ -325,8 +329,12 @@ void DataFileManager::CheckPassword()
 	
 	do
 	{
-		cout << "Enter the password:\n";
-		GetPassword(password);
+		if (!cmdPwd)
+		{
+			cout << "Enter the password:\n";
+			GetPassword(guessPwd);
+		}
+
 		cout << "Verifying password...";
 
 		PKCS5_PBKDF2_HMAC<SHA256> kdf;
@@ -334,8 +342,8 @@ void DataFileManager::CheckPassword()
 			kdfHash->data(),
 			kdfHash->size(),
 			0,
-			(byte*)password.data(),
-			password.size(),
+			(byte*)guessPwd.data(),
+			guessPwd.size(),
 			kdfSalt->data(),
 			kdfSalt->size(),
 			iterations);
@@ -347,12 +355,18 @@ void DataFileManager::CheckPassword()
 
 		if (validPwd)
 			cout << "done\n";
+
 		else
+		{
 			cout << "\nInvalid password entered\n";
+
+			if (cmdPwd)
+				exit(-1);
+		}
 
 	} while (!validPwd);
 
-	SecureZeroMemory(&password, sizeof(password));
+	SecureZeroMemory(&guessPwd, sizeof(guessPwd));
 }
 
 void DataFileManager::SetNewPassword()
@@ -395,6 +409,15 @@ void DataFileManager::SetNewPassword()
 
 	kdfHash.ProtectMemory(true);
 	kdfSalt.ProtectMemory(true);
+
+	winreg::RegKey policySettings(
+		HKEY_LOCAL_MACHINE,
+		"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
+		KEY_WRITE);
+
+	policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+
+	passwordReset = true;
 
 	cout << "done" << endl;
 	ClosePolicyFile();

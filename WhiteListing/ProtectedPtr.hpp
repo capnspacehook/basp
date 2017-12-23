@@ -100,8 +100,11 @@ namespace Protected_Ptr
 			if (dataSize > 0)
 			{
 				//CryptProtectMemory requires data to be a multiple of its block size
-				if (mod = dataSize % CRYPTPROTECTMEMORY_BLOCK_SIZE)
+				mod = dataSize % CRYPTPROTECTMEMORY_BLOCK_SIZE;
+
+				if(mod != 0)
 					dataBlockSize = dataSize + (CRYPTPROTECTMEMORY_BLOCK_SIZE - mod);
+				
 				else
 					dataBlockSize = dataSize;
 
@@ -183,7 +186,7 @@ namespace Protected_Ptr
 			rhs.swap(*this);
 			return *this;
 		}
-
+		
 		//constant time comparison 
 		bool operator==(ProtectedPtr& rhs)
 		{

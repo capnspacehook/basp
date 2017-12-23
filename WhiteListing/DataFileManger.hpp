@@ -3,7 +3,6 @@
 #include "Crypto++\aes.h"
 
 #include <filesystem>
-#include <fstream>
 #include <string>
 #include <vector>
 #include <tuple>
@@ -39,11 +38,16 @@ namespace AppSecPolicy
 
 		std::string GetGlobalSettings() const
 		{
-			return globalPolicySettings;
-		}
+			if (passwordReset)
+				return GetCurrentPolicySettings();
 
-		void VerifyPassword();
-		void CheckPassword();
+			else
+				return globalPolicySettings;
+		}
+		std::string GetCurrentPolicySettings() const;
+
+		void VerifyPassword(std::string&);
+		void CheckPassword(std::string&);
 		void SetNewPassword();
 		RuleFindResult FindRule(AppSecPolicy::SecOption, RuleType,
 			const std::string&, std::string&) const;
@@ -54,7 +58,7 @@ namespace AppSecPolicy
 		void GetPassword(std::string&);
 		bool OpenPolicyFile();
 		void ClosePolicyFile();
-		std::string GetGobalPolicySettings() const;
+		
 		void ReorganizePolicyData();
 
 		const unsigned iterations = 1000;	//iterations for PBKDF2
@@ -73,6 +77,7 @@ namespace AppSecPolicy
 		
 		bool rulesAdded = false;
 		bool rulesNotSorted = true;
+		bool passwordReset = false;
 		bool policyDataModified = false;
 
 		std::vector<std::string> executableTypes = {
