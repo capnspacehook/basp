@@ -49,9 +49,10 @@ namespace AppSecPolicy
 		void VerifyPassword(std::string&);
 		void CheckPassword(std::string&);
 		void SetNewPassword();
-		RuleFindResult FindRule(AppSecPolicy::SecOption, RuleType,
+		RuleFindResult FindRule(SecOption, RuleType,
 			const std::string&, std::string&) const;
-		void WriteToFile(const RuleData&, WriteType);
+		void UpdateUserRules(const std::vector<UserRule>&, bool);
+		void WriteToFile(const std::vector<RuleData>&, WriteType);
 		void ListRules() const;
 
 	private:
@@ -59,6 +60,8 @@ namespace AppSecPolicy
 		bool OpenPolicyFile();
 		void ClosePolicyFile();
 		
+		RuleFindResult FindUserRule(SecOption, RuleType, 
+			const std::string&, std::size_t&) const;
 		void ReorganizePolicyData();
 
 		const unsigned iterations = 1000;	//iterations for PBKDF2
@@ -72,6 +75,11 @@ namespace AppSecPolicy
 		ProtectedPtr<std::string, StringSerializer> policyData;
 		
 		std::string globalPolicySettings;
+
+		std::vector<std::string> userRuleInfo;
+		std::vector<std::string> userRulePaths;
+		std::vector<std::string> removedRules;
+
 		std::vector<std::string> ruleInfo;		//data of already created rules
 		std::vector<std::string> rulePaths;		//paths of created rules for searching
 		

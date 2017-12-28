@@ -29,6 +29,9 @@ void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
 
 	secOption = op;
 	ruleType = rType;
+
+	enteredRules.emplace_back(
+		secOption, ruleType, path);
 	EnumAttributes(path);
 }
 
@@ -44,7 +47,11 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	ruleType = rType;
 
 	for (const auto &path : paths)
+	{
+		enteredRules.emplace_back(
+			secOption, ruleType, path);
 		EnumAttributes(path);
+	}
 }
 
 //create a whitelisting rule, execute the file passed in, and delete the rule
@@ -267,6 +274,8 @@ void SecPolicy::RemoveRules(const string &path)
 	StartTimer();
 
 	ruleRemoval = true;
+	enteredRules.emplace_back(
+		secOption, ruleType, path);
 	EnumAttributes(path);
 }
 
@@ -278,7 +287,11 @@ void SecPolicy::RemoveRules(const vector<string> &paths)
 
 	ruleRemoval = true;
 	for (const auto &path : paths)
+	{
+		enteredRules.emplace_back(
+			secOption, ruleType, path);
 		EnumAttributes(path);
+	}
 }
 
 void SecPolicy::EnumLoadedDLLs(const string &exeFile)
@@ -658,9 +671,6 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 				else if (result == RuleFindResult::EXACT_MATCH)
 					skippedRules++;
 			}
-
-			else
-				skippedRules++;
 		}
 	}
 	catch (const fs::filesystem_error &e)
@@ -762,6 +772,8 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 		//write changes to settings file
 		if (updateSettings && !tempRuleCreation)
 		{
+			dataFileMan.UpdateUserRules(enteredRules, ruleRemoval);
+
 			if (createdRules)
 				dataFileMan.WriteToFile(createdRulesData, WriteType::CREATED_RULES);
 

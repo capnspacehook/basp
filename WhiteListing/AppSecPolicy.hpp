@@ -1,4 +1,3 @@
-#include <vector>
 #include <string>
 #include <tuple>
 #include <memory>
@@ -21,6 +20,8 @@ namespace AppSecPolicy
 	enum class WriteType { CREATED_RULES, SWITCHED_RULES, REMOVED_RULES };
 	enum class RuleFindResult { EXACT_MATCH, DIFF_SEC_OP, DIFF_TYPE, DIFF_OP_AND_TYPE, NO_MATCH };
 
-	typedef std::vector<std::tuple<SecOption, RuleType,
-		std::string, std::shared_ptr<std::string>>> RuleData;
+	typedef std::tuple<SecOption, RuleType, std::string> UserRule;
+
+	typedef std::tuple<SecOption, RuleType,
+		std::string, std::shared_ptr<std::string>> RuleData;
 }

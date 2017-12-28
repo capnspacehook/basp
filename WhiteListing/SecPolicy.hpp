@@ -3,10 +3,12 @@
 
 #include <filesystem>
 #include <iostream>
+#include <atomic>
 #include <chrono>
 #include <thread>
 #include <string>
 #include <vector>
+#include <queue>
 #include <tuple>
 #pragma once
 
@@ -17,10 +19,7 @@ namespace AppSecPolicy
 	class SecPolicy
 	{
 	public:
-		explicit SecPolicy()
-		{
-			
-		};
+		explicit SecPolicy() noexcept {};
 		~SecPolicy()
 		{
 			//wait for all threads to finish
@@ -73,14 +72,18 @@ namespace AppSecPolicy
 		bool tempRuleCreation = false;
 		bool ruleRemoval = false;
 
+		const unsigned maxHardwareThreads = 
+			std::thread::hardware_concurrency();
 		std::vector<std::thread> threads;
 
 		SecOption secOption;
 		RuleType ruleType;
 
-		RuleData createdRulesData;
-		RuleData switchedRulesData;
-		RuleData removedRulesData;
+		std::vector<UserRule> enteredRules;
+
+		std::vector<RuleData> createdRulesData;
+		std::vector<RuleData> switchedRulesData;
+		std::vector<RuleData> removedRulesData;
 
 		//statistical variables
 		std::size_t createdRules = 0;

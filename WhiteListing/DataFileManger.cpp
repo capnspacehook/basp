@@ -17,6 +17,7 @@
 #include <exception>
 #include <iostream>
 #include <sstream>
+#include <utility>
 #include <vector>
 #include <thread>
 #include <string>
@@ -65,11 +66,29 @@ bool DataFileManager::OpenPolicyFile()
 		getline(iss, temp);
 		//get global settings
 		getline(iss, globalPolicySettings);
-		while (getline(iss, temp))
+
+		if (getline(iss, temp))
 		{
+			while (temp.back() == '*')
+			{
+				temp.pop_back();
+				userRuleInfo.emplace_back(temp);
+				userRulePaths.emplace_back(temp.substr(
+					RULE_PATH_POS, temp.find_last_of("|") - 4));
+
+				getline(iss, temp);
+			}
+
 			ruleInfo.emplace_back(temp + "\n");
 			rulePaths.emplace_back(temp.substr(
 				RULE_PATH_POS, temp.find_last_of("|") - 4));
+
+			while (getline(iss, temp))
+			{
+				ruleInfo.emplace_back(temp + "\n");
+				rulePaths.emplace_back(temp.substr(
+					RULE_PATH_POS, temp.find_last_of("|") - 4));
+			}
 		}
 
 		ClosePolicyFile();
@@ -152,7 +171,6 @@ string DataFileManager::GetCurrentPolicySettings() const
 			policySettings += type + ",";
 
 		policySettings.pop_back();
-		//policySettings[policySettings.length() - 1] = '\n';
 
 		return policySettings;
 	}
@@ -208,73 +226,168 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	return result;
 }
 
-void DataFileManager::WriteToFile(const RuleData& ruleData, WriteType writeType)
+RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
+	const string &path, size_t &index) const
+{
+	SecOption findOp = option;
+	RuleType findType = type;
+	RuleFindResult result = RuleFindResult::NO_MATCH;
+
+	if (userRulePaths.size() == 0)
+		return result;
+
+	auto iterator = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
+
+	if (iterator != userRulePaths.end() && !(path < *iterator))
+	{
+		string foundRule = ruleInfo[distance(userRulePaths.begin(), iterator)];
+
+		option = static_cast<SecOption>(
+			(int)(foundRule.at(SEC_OPTION_POS) - '0'));
+
+		type = static_cast<RuleType>(
+			(int)(foundRule.at(RULE_TYPE_POS) - '0'));
+
+		index = distance(userRulePaths.begin(), iterator);
+
+		if (findOp != option && findType != type)
+			result = RuleFindResult::DIFF_OP_AND_TYPE;
+
+		else if (findOp != option)
+			result = RuleFindResult::DIFF_SEC_OP;
+
+		else if (findType != type)
+			result = RuleFindResult::DIFF_TYPE;
+
+		else
+			result = RuleFindResult::EXACT_MATCH;
+	}
+
+	return result;
+}
+
+void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool rulesRemoved)
+{
+	SecOption option;
+	RuleType type;
+	string location;
+	size_t index;
+
+	for (const auto& rule : ruleNames)
+	{
+		option = static_cast<SecOption>(get<SEC_OPTION>(rule));
+		type = static_cast<RuleType>(get<RULE_TYPE>(rule));
+		location = get<FILE_LOCATION>(rule);
+
+		RuleFindResult result = FindUserRule(option, type, location, index);
+
+		if (result == RuleFindResult::NO_MATCH && !rulesRemoved)
+		{
+			userRuleInfo.emplace_back(to_string(static_cast<int>(option))
+				+ '|' + to_string(static_cast<int>(type))
+				+ '|' + location);
+		}
+
+		else if (result != RuleFindResult::NO_MATCH && rulesRemoved)
+		{
+			removedRules.emplace_back(userRulePaths[index]);
+			userRuleInfo.erase(userRuleInfo.begin() + index);
+		}
+
+		else if (result == RuleFindResult::DIFF_SEC_OP)
+			userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+	}
+}
+
+void DataFileManager::WriteToFile(const vector<RuleData>& ruleData, WriteType writeType)
 {
 	try
 	{
-		int option;
-		int type;
-		string location;
-		string guid;
-
-		for (const auto& rule : ruleData)
+		if (writeType == WriteType::REMOVED_RULES)
 		{
-			option = static_cast<int>(get<SEC_OPTION>(rule));
-			type = static_cast<int>(get<RULE_TYPE>(rule));
-			location = get<FILE_LOCATION>(rule);
-			guid = *get<RULE_GUID>(rule);
-
-			if (writeType == WriteType::CREATED_RULES)
+			for (const auto& rule : removedRules)
 			{
-				rulesAdded = true;
+				const auto rulePathRange = equal_range(
+					rulePaths.begin(), rulePaths.end(), rule,
+					[&rule](const string &lhs, const string &rhs)
+					{
+						bool ret = false;
+						if (rhs == rule)
+							ret = lhs.compare(0, rule.length(), rule) < 0;
 
-				rulePaths.emplace_back(location);
-				ruleInfo.emplace_back(to_string(option) + "|" + to_string(type)
-					+ "|" + location + "|" + guid + "\n");
+						if (lhs == rule)
+							ret = rhs.compare(0, rule.length(), rule) > 0;
+
+						return ret;
+					});
+				
+				const auto ruleInfoRange = make_pair(
+					ruleInfo.begin() + distance(rulePathRange.second, rulePaths.end()),
+					ruleInfo.begin() + distance(rulePathRange.first, rulePaths.end()));
+
+				rulePaths.erase(rulePathRange.first, rulePathRange.second);
+				ruleInfo.erase(ruleInfoRange.first, ruleInfoRange.second);
 			}
+		}
 
-			else 
+		else
+		{
+			int option;
+			int type;
+			string location;
+			string guid;
+
+			for (const auto& rule : ruleData)
 			{
-				if (rulesAdded)
+				option = static_cast<int>(get<SEC_OPTION>(rule));
+				type = static_cast<int>(get<RULE_TYPE>(rule));
+				location = get<FILE_LOCATION>(rule);
+				guid = *get<RULE_GUID>(rule);
+
+				if (writeType == WriteType::CREATED_RULES)
 				{
-					sort(ruleInfo.begin(), ruleInfo.end(),
-						[&](const string &str1, const string &str2)
+					rulesAdded = true;
+
+					rulePaths.emplace_back(location);
+					ruleInfo.emplace_back(to_string(option) + '|' + to_string(type)
+						+ '|' + location + '|' + guid + '\n');
+				}
+
+				else if (writeType == WriteType::SWITCHED_RULES)
+				{
+					if (rulesAdded)
+					{
+						sort(ruleInfo.begin(), ruleInfo.end(),
+							[](const string &str1, const string &str2)
 						{
 							return str1.substr(RULE_PATH_POS,
 								str1.find_last_of("|") - 4)
 								< str2.substr(RULE_PATH_POS,
-								str2.find_last_of("|") - 4);
+									str2.find_last_of("|") - 4);
 						});
 
-					rulePaths.clear();
-					for (const auto& rule : ruleInfo)
-					{
-						rulePaths.emplace_back(rule.substr(RULE_PATH_POS,
-							rule.find_last_of("|") - 4));
+						rulePaths.clear();
+						for (const auto& rule : ruleInfo)
+						{
+							rulePaths.emplace_back(rule.substr(RULE_PATH_POS,
+								rule.find_last_of("|") - 4));
+						}
+
+						rulesAdded = false;
+						rulesNotSorted = false;
 					}
 
-					rulesAdded = false;
-					rulesNotSorted = false;
-				}
+					auto iterator = lower_bound(
+						rulePaths.begin(), rulePaths.end(), location);
 
-				auto iterator = lower_bound(
-					rulePaths.begin(), rulePaths.end(), location);
+					size_t index = distance(rulePaths.begin(), iterator);
 
-				size_t index = distance(rulePaths.begin(), iterator);
-
-				if (writeType == WriteType::SWITCHED_RULES)
 					ruleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
-
-				else
-				{
-					rulePaths.erase(iterator);
-					ruleInfo.erase(ruleInfo.begin() + index);
 				}
 			}
 		}
 
-		if (ruleInfo.size() || writeType == WriteType::REMOVED_RULES)
-			ReorganizePolicyData();
+		ReorganizePolicyData();
 	}
 	catch (const exception &e)
 	{
@@ -286,8 +399,10 @@ void DataFileManager::ReorganizePolicyData()
 {
 	if (rulesNotSorted)
 	{
+		sort(userRuleInfo.begin(), userRuleInfo.end());
+
 		sort(ruleInfo.begin(), ruleInfo.end(),
-			[&](const string &str1, const string &str2)
+			[](const string &str1, const string &str2)
 			{
 				return str1.substr(RULE_PATH_POS,
 					str1.find_last_of("|") - 4)
@@ -297,6 +412,9 @@ void DataFileManager::ReorganizePolicyData()
 	}
 
 	policyData->clear();
+
+	for (const auto& line : userRuleInfo)
+		*policyData += line + '*' + '\n';
 
 	for (const auto& line : ruleInfo)
 		*policyData += line;
@@ -423,7 +541,6 @@ void DataFileManager::SetNewPassword()
 	ClosePolicyFile();
 }
 
-//securely get password from user
 void DataFileManager::GetPassword(string &password)
 {
 	//set console to not show typed password
@@ -440,9 +557,9 @@ void DataFileManager::GetPassword(string &password)
 
 void DataFileManager::ListRules() const
 {
-	auto sortedRules = ruleInfo;
+	auto sortedRules = userRuleInfo;
 	sort(sortedRules.begin(), sortedRules.end(), 
-		[&](const string &str1, const string &str2)
+		[](const string &str1, const string &str2)
 	{
 		if (str1[SEC_OPTION] != str2[SEC_OPTION])
 			return str1[SEC_OPTION] > str2[SEC_OPTION];
@@ -463,30 +580,45 @@ void DataFileManager::ListRules() const
 	char whiteList = static_cast<char>(SecOption::WHITELIST) + '0';
 	char blackList = static_cast<char>(SecOption::BLACKLIST) + '0';
 
-	unsigned index = 0;
-	cout << "\nAllowed rules:\n";
-	for (index; index < sortedRules.size(); index++)
+	if (sortedRules.size() > 0)
 	{
-		if (sortedRules[index][SEC_OPTION] == whiteList)
+		unsigned index = 0;
+
+		if (sortedRules[0][0] == whiteList)
 		{
-			cout << sortedRules[index].substr(RULE_PATH_POS,
-				sortedRules[index].find_last_of("|") - 4)
-				<< "\n";
+			cout << "Allowed rules:\n";
+			for (index; index < sortedRules.size(); index++)
+			{
+				if (sortedRules[index][SEC_OPTION] == whiteList)
+				{
+					cout << sortedRules[index].substr(RULE_PATH_POS,
+						sortedRules[index].find_last_of("|") - 4)
+						<< "\n";
+				}
+				else
+					break;
+			}
+
+			cout << endl;
 		}
-		else 
-			break;
+
+		if (sortedRules[0][0] == blackList)
+		{
+			cout << "Denied rules:\n";
+			for (index; index < sortedRules.size(); index++)
+			{
+				if (sortedRules[index][SEC_OPTION] == blackList)
+				{
+					cout << sortedRules[index].substr(RULE_PATH_POS,
+						sortedRules[index].find_last_of("|") - 4)
+						<< "\n";
+				}
+				else
+					break;
+			}
+		}
 	}
 
-	cout << "\nDenied rules:\n";
-	for (index; index < sortedRules.size(); index++)
-	{
-		if (sortedRules[index][SEC_OPTION] == blackList)
-		{
-			cout << sortedRules[index].substr(RULE_PATH_POS,
-				sortedRules[index].find_last_of("|") - 4)
-				<< "\n";
-		}
-		else
-			break;
-	}
+	else
+		cout << "No rules have been created\n";
 }
