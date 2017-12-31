@@ -64,7 +64,7 @@ namespace AppSecPolicy
 		}
 		void EnumAttributes(const std::string&);
 		void EnumDirContents(const fs::path&, uintmax_t&);
-		void DeleteRule(const fs::path&);
+		void DeleteRules(const fs::path&);
 		void CheckValidType(const fs::path&, const uintmax_t&);
 		void PrintStats() const;
 		void ApplyChanges(bool);

@@ -295,7 +295,7 @@ void SecPolicy::RemoveRules(const string &path)
 	ruleRemoval = true;
 	enteredRules.emplace_back(
 		secOption, ruleType, lowerPath);
-	EnumAttributes(lowerPath);
+	DeleteRules(path);
 }
 
 void SecPolicy::RemoveRules(const vector<string> &paths)
@@ -314,7 +314,7 @@ void SecPolicy::RemoveRules(const vector<string> &paths)
 
 		enteredRules.emplace_back(
 			secOption, ruleType, lowerPath);
-		EnumAttributes(lowerPath);
+		DeleteRules(lowerPath);
 	}
 }
 
@@ -535,12 +535,6 @@ void SecPolicy::EnumAttributes(const string &fileName)
 					<< initialFile.string()  << "...";
 			}
 
-			else if (ruleRemoval)
-			{
-				cout << "Removing rules in " << initialFile.string()
-					<< "...";
-			}
-
 			else
 			{
 				((bool)secOption) ? action = "Whitelisting" 
@@ -555,35 +549,26 @@ void SecPolicy::EnumAttributes(const string &fileName)
 		}
 		else
 		{
-			if (ruleRemoval)
+			fileSize = fs::file_size(initialFile);
+			if (fileSize && fs::is_regular_file(initialFile))
 			{
-				cout << "Removing" << initialFile.string();
-				DeleteRule(initialFile);
+				((bool)secOption) ? action = "Whitelisting"
+					: action = "Blacklisting";
+
+				cout << action << " "
+					<< initialFile.string();
+
+				CheckValidType(initialFile, fileSize);
 				cout << "done" << endl;
 			}
 
 			else
 			{
-				fileSize = fs::file_size(initialFile);
-				if (fileSize && fs::is_regular_file(initialFile))
-				{
-					((bool)secOption) ? action = "Whitelisting"
-						: action = "Blacklisting";
-
-					cout << action << " "
-						<< initialFile.string();
-
-					CheckValidType(initialFile, fileSize);
-					cout << "done" << endl;
-				}
-
-				else
-				{
-					cout << "Can't create hash rule for " <<
-						initialFile.string() << endl;
-					exit(-1);
-				}
+				cout << "Can't create hash rule for " <<
+					initialFile.string() << endl;
+				exit(-1);
 			}
+			
 		}
 	}
 	catch (const fs::filesystem_error &e)
@@ -610,7 +595,7 @@ void SecPolicy::EnumDirContents(const fs::path& dir, uintmax_t &fileSize)
 				else
 				{
 					if (ruleRemoval)
-						DeleteRule(currFile);
+						DeleteRules(currFile);
 
 					else
 					{
@@ -695,33 +680,45 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 	}
 }
 
-void SecPolicy::DeleteRule(const fs::path &file)
+void SecPolicy::DeleteRules(const fs::path &file)
 {
-	string path;
-	RuleData ruleData;
-	string temp = file.string();
-	transform(temp.begin(), temp.end(),
-		back_inserter(path), tolower);
-
-	SecOption ruleOp = SecOption::BLACKLIST;
-	RuleFindResult result = dataFileMan.FindRule(
-		ruleOp, RuleType::HASHRULE, path, ruleData);
-
-	if (result != RuleFindResult::NO_MATCH)
+	bool foundRules = false;
+	if (fs::is_directory(file))
 	{
-		if (result == RuleFindResult::DIFF_SEC_OP)
-			ruleOp = SecOption::WHITELIST;
+		cout << "Removing rules of " << file.string() << "...";
 
-		removedRules++;
-		threads.emplace_back(
-			&HashRule::RemoveRule,
-			HashRule(),
-			get<RULE_GUID>(ruleData),
-			ruleOp);
+		vector<RuleData> rulesInDir;
+		foundRules = dataFileMan.FindRulesInDir(
+			file.string(), rulesInDir);
+
+		if (foundRules)
+		{
+			for (const auto &rule : rulesInDir)
+			{
+				threads.emplace_back(
+					&HashRule::RemoveRule,
+					HashRule(),
+					get<RULE_GUID>(rule),
+					get<SEC_OPTION>(rule));
+			}
+		}
 	}
 
-	else
-		skippedRules++;
+	else if (fs::is_regular_file(file))
+	{
+		RuleData ruleData;
+		if (dataFileMan.FindRule(secOption, ruleType, file.string(), ruleData)
+			!= RuleFindResult::NO_MATCH)
+		{
+			cout << "Removing rule for " << file << "...";
+
+			HashRule hashRule;
+			hashRule.RemoveRule(get<RULE_GUID>(ruleData),
+				get<SEC_OPTION>(ruleData));
+		}
+	}
+
+	cout << "done\n";
 }
 
 //print how many rules were created and runtime of rule creation

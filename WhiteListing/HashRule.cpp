@@ -419,6 +419,8 @@ void HashRule::RemoveRule(const string &guid, SecOption policy)
 
 		tempKey.DeleteKey(guid + "\\SHA256", KEY_WOW64_32KEY);
 		tempKey.DeleteKey(guid, KEY_WOW64_32KEY);
+
+		SecPolicy::removedRules++;
 	}
 	catch (const RegException &e)
 	{

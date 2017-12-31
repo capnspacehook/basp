@@ -210,51 +210,9 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	
 	if (iterator != rulePaths.end() && !(path < *iterator))
 	{
-		string temp;
-		string hash;
 		string foundRule = ruleInfo[distance(rulePaths.begin(), iterator)];
-		istringstream iss(foundRule);
-		
-		getline(iss, temp, '|');
-		option = static_cast<SecOption>(
-			static_cast<int>((temp.front() - '0')));
-		get<SEC_OPTION>(foundRuleData) = option;
-
-		getline(iss, temp, '|');
-		type = static_cast<RuleType>(
-			static_cast<int>((temp.front() - '0')));
-		get<RULE_TYPE>(foundRuleData) = type;
-
-		getline(iss, temp, '|');
-		get<FILE_LOCATION>(foundRuleData) = temp;
-
-		getline(iss, temp, '|');
-		get<RULE_GUID>(foundRuleData) = temp;
-
-		getline(iss, temp, '|');
-		get<FRIENDLY_NAME>(foundRuleData) = temp;
-
-		getline(iss, temp, '|');
-		get<ITEM_SIZE>(foundRuleData) = stoull(temp);
-
-		getline(iss, temp, '|');
-		get<LAST_MODIFIED>(foundRuleData) = stoull(temp);
-
-		getline(iss, temp, '|');
-		StringSource(temp, true,
-			new HexDecoder(new StringSink(hash)));
-
-		for (int i = 0; i < hash.size(); i++)
-			get<ITEM_DATA>(foundRuleData).emplace_back(hash[i]);
-
-		hash.clear();
-		getline(iss, temp, '|');
-		temp.pop_back();
-		StringSource(temp, true,
-			new HexDecoder(new StringSink(hash)));
-
-		for (int i = 0; i < hash.size(); i++)
-			get<SHA256_HASH>(foundRuleData).emplace_back(hash[i]);
+	
+		foundRuleData = move(StringToRuleData(foundRule));
 
 		if (findOp != option && findType != type)
 			result = RuleFindResult::DIFF_OP_AND_TYPE;
@@ -340,6 +298,88 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	}
 
 	return result;
+}
+
+bool DataFileManager::FindRulesInDir(const string &path, vector<RuleData> &rulesInDir) const
+{
+	bool rulesExist = false;
+	auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), path);
+
+	auto removedRulesEnd = upper_bound(removedRulesBegin, rulePaths.end(), path,
+		[&path](string const& str1, string const& str2)
+		{
+			// compare UP TO the length of the prefix and no farther
+			if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
+				return cmp < 0;
+
+			// The strings are equal to the length of the prefix so
+			// behave as if they are equal. That means s1 < s2 == false
+			return false;
+		});
+
+	if ((removedRulesBegin != rulePaths.end() || removedRulesEnd != rulePaths.end())
+		&& (removedRulesBegin != rulePaths.begin() || removedRulesEnd != rulePaths.begin()))
+	{
+		auto ruleInfoRange = make_pair(
+			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesBegin),
+			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesEnd));
+
+		for (auto it = ruleInfoRange.first; it != ruleInfoRange.second; ++it)
+			rulesInDir.emplace_back(move(StringToRuleData(*it)));
+
+		rulesExist = true;
+	}
+
+	return rulesExist;
+}
+
+RuleData DataFileManager::StringToRuleData(const string& ruleStr) const
+{
+	string temp;
+	string hash;
+	RuleData ruleData;
+	istringstream iss(ruleStr);
+
+	getline(iss, temp, '|');
+	get<SEC_OPTION>(ruleData) = static_cast<SecOption>(
+		static_cast<int>((temp.front() - '0')));
+
+	getline(iss, temp, '|');
+	get<RULE_TYPE>(ruleData) = static_cast<RuleType>(
+		static_cast<int>((temp.front() - '0')));
+
+	getline(iss, temp, '|');
+	get<FILE_LOCATION>(ruleData) = temp;
+
+	getline(iss, temp, '|');
+	get<RULE_GUID>(ruleData) = temp;
+
+	getline(iss, temp, '|');
+	get<FRIENDLY_NAME>(ruleData) = temp;
+
+	getline(iss, temp, '|');
+	get<ITEM_SIZE>(ruleData) = stoull(temp);
+
+	getline(iss, temp, '|');
+	get<LAST_MODIFIED>(ruleData) = stoull(temp);
+
+	getline(iss, temp, '|');
+	StringSource(temp, true,
+		new HexDecoder(new StringSink(hash)));
+
+	for (int i = 0; i < hash.size(); i++)
+		get<ITEM_DATA>(ruleData).emplace_back(hash[i]);
+
+	hash.clear();
+	getline(iss, temp, '|');
+	temp.pop_back();
+	StringSource(temp, true,
+		new HexDecoder(new StringSink(hash)));
+
+	for (int i = 0; i < hash.size(); i++)
+		get<SHA256_HASH>(ruleData).emplace_back(hash[i]);
+
+	return ruleData;
 }
 
 void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool rulesRemoved)
@@ -456,8 +496,6 @@ void DataFileManager::InsertNewEntries(const vector<shared_ptr<RuleData>>& ruleD
 		string friendlyName;
 		uintmax_t itemSize;
 		uintmax_t lastModified;
-		string md5Hash;
-		string sha256Hash;
 
 		for (const auto& rule : ruleData)
 		{
@@ -512,9 +550,9 @@ void DataFileManager::SwitchEntries(SecOption option)
 
 	for (const auto& rule : switchedRules)
 	{
-		auto switchedRulesBegin = std::lower_bound(rulePaths.begin(), rulePaths.end(), rule);
+		auto switchedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), rule);
 
-		auto switchedRulesEnd = std::upper_bound(switchedRulesBegin, rulePaths.end(), rule,
+		auto switchedRulesEnd = upper_bound(switchedRulesBegin, rulePaths.end(), rule,
 			[&rule](string const& str1, string const& str2)
 			{
 				// compare UP TO the length of the prefix and no farther
@@ -541,19 +579,19 @@ void DataFileManager::RemoveOldEntries()
 {
 	for (const auto& rule : removedRules)
 	{
-		auto removedRulesBegin = std::lower_bound(rulePaths.begin(), rulePaths.end(), rule);
+		auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), rule);
 
-		auto removedRulesEnd = std::upper_bound(removedRulesBegin, rulePaths.end(), rule,
+		auto removedRulesEnd = upper_bound(removedRulesBegin, rulePaths.end(), rule,
 			[&rule](string const& str1, string const& str2)
-		{
-			// compare UP TO the length of the prefix and no farther
-			if (auto cmp = strncmp(str1.data(), str2.data(), rule.size()))
-				return cmp < 0;
+			{
+				// compare UP TO the length of the prefix and no farther
+				if (auto cmp = strncmp(str1.data(), str2.data(), rule.size()))
+					return cmp < 0;
 
-			// The strings are equal to the length of the prefix so
-			// behave as if they are equal. That means s1 < s2 == false
-			return false;
-		});
+				// The strings are equal to the length of the prefix so
+				// behave as if they are equal. That means s1 < s2 == false
+				return false;
+			});
 
 		auto ruleInfoRange = make_pair(
 			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesBegin),
