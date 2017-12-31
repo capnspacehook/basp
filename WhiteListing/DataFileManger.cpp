@@ -11,6 +11,7 @@
 #include "Crypto++\sha.h"
 #include "Crypto++\aes.h"
 #include "Crypto++\gcm.h"
+#include "Crypto++\hex.h"
 
 #include <filesystem>
 #include <algorithm>
@@ -57,6 +58,17 @@ bool DataFileManager::OpenPolicyFile()
 
 	if (goodOpen)
 	{
+		//lock the settings file so that no other 
+		//process/thread can read or modify it
+		policyFileHandle = CreateFile(
+			policyFileName.c_str(),
+			GENERIC_READ | GENERIC_WRITE,
+			NULL,
+			NULL,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL);
+
 		*policyData = temp;
 		temp.clear();
 
@@ -74,20 +86,20 @@ bool DataFileManager::OpenPolicyFile()
 				temp.pop_back();
 				userRuleInfo.emplace_back(temp);
 				userRulePaths.emplace_back(temp.substr(
-					RULE_PATH_POS, temp.find_last_of("|") - 4));
+					RULE_PATH_POS, temp.length()));
 
 				getline(iss, temp);
 			}
 
 			ruleInfo.emplace_back(temp + "\n");
 			rulePaths.emplace_back(temp.substr(
-				RULE_PATH_POS, temp.find_last_of("|") - 4));
+				RULE_PATH_POS, temp.find("|{") - 4));
 
 			while (getline(iss, temp))
 			{
 				ruleInfo.emplace_back(temp + "\n");
 				rulePaths.emplace_back(temp.substr(
-					RULE_PATH_POS, temp.find_last_of("|") - 4));
+					RULE_PATH_POS, temp.find("|{") - 4));
 			}
 		}
 
@@ -127,7 +139,7 @@ void DataFileManager::ClosePolicyFile()
 		//prepend dummy data that will be skipped
 		policyData->insert(0, KEY_SIZE, 'A');
 	}
-
+	
 	StringSource updatedData(*policyData, false);
 	//skip part containing the salt
 	updatedData.Pump(KEY_SIZE);
@@ -185,7 +197,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 }
 
 RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
-	const string &path, string &guid) const
+	const string &path, RuleData &foundRuleData) const
 {
 	SecOption findOp = option;
 	RuleType findType = type;
@@ -198,17 +210,51 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	
 	if (iterator != rulePaths.end() && !(path < *iterator))
 	{
+		string temp;
+		string hash;
 		string foundRule = ruleInfo[distance(rulePaths.begin(), iterator)];
-
+		istringstream iss(foundRule);
+		
+		getline(iss, temp, '|');
 		option = static_cast<SecOption>(
-			(int)(foundRule.at(SEC_OPTION_POS) - '0'));
+			static_cast<int>((temp.front() - '0')));
+		get<SEC_OPTION>(foundRuleData) = option;
 
+		getline(iss, temp, '|');
 		type = static_cast<RuleType>(
-			(int)(foundRule.at(RULE_TYPE_POS) - '0'));
+			static_cast<int>((temp.front() - '0')));
+		get<RULE_TYPE>(foundRuleData) = type;
 
-		guid = foundRule.substr(foundRule.find_last_of("|") + 1,
-			foundRule.length());
-		guid.pop_back();
+		getline(iss, temp, '|');
+		get<FILE_LOCATION>(foundRuleData) = temp;
+
+		getline(iss, temp, '|');
+		get<RULE_GUID>(foundRuleData) = temp;
+
+		getline(iss, temp, '|');
+		get<FRIENDLY_NAME>(foundRuleData) = temp;
+
+		getline(iss, temp, '|');
+		get<ITEM_SIZE>(foundRuleData) = stoull(temp);
+
+		getline(iss, temp, '|');
+		get<LAST_MODIFIED>(foundRuleData) = stoull(temp);
+
+		getline(iss, temp, '|');
+		StringSource(temp, true,
+			new HexDecoder(new StringSink(hash)));
+
+		for (int i = 0; i < hash.size(); i++)
+			get<ITEM_DATA>(foundRuleData).emplace_back(hash[i]);
+
+		hash.clear();
+		getline(iss, temp, '|');
+		temp.pop_back();
+		StringSource(temp, true,
+			new HexDecoder(new StringSink(hash)));
+
+		for (int i = 0; i < hash.size(); i++)
+			get<SHA256_HASH>(foundRuleData).emplace_back(hash[i]);
 
 		if (findOp != option && findType != type)
 			result = RuleFindResult::DIFF_OP_AND_TYPE;
@@ -229,6 +275,7 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	const string &path, size_t &index) const
 {
+	bool validRule = false;
 	SecOption findOp = option;
 	RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
@@ -236,31 +283,60 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	if (userRulePaths.size() == 0)
 		return result;
 
-	auto iterator = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
+	vector<string>::const_iterator foundRule;
 
-	if (iterator != userRulePaths.end() && !(path < *iterator))
+	foundRule = std::lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
+		[&path](string const& str1, string const& str2)
+		{
+			// compare UP TO the length of the prefix and no farther
+			if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
+				return cmp > 0;
+
+			// The strings are equal to the length of the suffix so
+			// behave as if they are equal. That means s1 < s2 == false
+			return false;
+		});
+
+	if (foundRule != userRulePaths.end() && !(path < *foundRule))
 	{
-		string foundRule = ruleInfo[distance(userRulePaths.begin(), iterator)];
+		if (*foundRule != path)
+			result = RuleFindResult::SUBDIRECTORY;
+
+		validRule = true;
+	}
+		
+	if (validRule)
+	{
+		index = distance(userRulePaths.begin(), foundRule);
+
+		string foundRuleInfo = userRuleInfo[index];
 
 		option = static_cast<SecOption>(
-			(int)(foundRule.at(SEC_OPTION_POS) - '0'));
+			(int)(foundRuleInfo[SEC_OPTION_POS] - '0'));
 
 		type = static_cast<RuleType>(
-			(int)(foundRule.at(RULE_TYPE_POS) - '0'));
+			(int)(foundRuleInfo[RULE_TYPE_POS] - '0'));
 
-		index = distance(userRulePaths.begin(), iterator);
+		if (option == SecOption::REMOVED)
+			result = RuleFindResult::NO_MATCH;
 
-		if (findOp != option && findType != type)
-			result = RuleFindResult::DIFF_OP_AND_TYPE;
-
-		else if (findOp != option)
-			result = RuleFindResult::DIFF_SEC_OP;
-
-		else if (findType != type)
-			result = RuleFindResult::DIFF_TYPE;
+		else if (result == RuleFindResult::SUBDIRECTORY && findOp != option)
+			result = RuleFindResult::SUBDIR_DIFF_SEC_OP;
 
 		else
-			result = RuleFindResult::EXACT_MATCH;
+		{
+			if (findOp != option && findType != type)
+				result = RuleFindResult::DIFF_OP_AND_TYPE;
+
+			else if (findOp != option)
+				result = RuleFindResult::DIFF_SEC_OP;
+
+			else if (findType != type)
+				result = RuleFindResult::DIFF_TYPE;
+
+			else
+				result = RuleFindResult::EXACT_MATCH;
+		}
 	}
 
 	return result;
@@ -268,10 +344,14 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 
 void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool rulesRemoved)
 {
+	
 	SecOption option;
 	RuleType type;
 	string location;
 	size_t index;
+
+	rulesNotSorted = false;
+	userRulesNotSorted = false;
 
 	for (const auto& rule : ruleNames)
 	{
@@ -279,112 +359,123 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 		type = static_cast<RuleType>(get<RULE_TYPE>(rule));
 		location = get<FILE_LOCATION>(rule);
 
+		if (userRulesNotSorted)
+		{
+			sort(userRuleInfo.begin(), userRuleInfo.end(),
+				[](const string &str1, const string &str2)
+				{
+					return str1.substr(RULE_PATH_POS,
+						str1.length())
+						< str2.substr(RULE_PATH_POS,
+							str2.length());
+				});
+
+			userRulePaths.clear();
+			for (const auto& rule : userRuleInfo)
+			{
+				userRulePaths.emplace_back(rule.substr(RULE_PATH_POS,
+					rule.length()));
+			}
+		}
+
 		RuleFindResult result = FindUserRule(option, type, location, index);
 
-		if (result == RuleFindResult::NO_MATCH && !rulesRemoved)
+		if ((result == RuleFindResult::NO_MATCH || result == RuleFindResult::SUBDIRECTORY) 
+			&& !rulesRemoved)
 		{
+			rulesNotSorted = true;
 			userRuleInfo.emplace_back(to_string(static_cast<int>(option))
 				+ '|' + to_string(static_cast<int>(type))
 				+ '|' + location);
+			
+			userRulesNotSorted = true;
 		}
 
 		else if (result != RuleFindResult::NO_MATCH && rulesRemoved)
 		{
-			removedRules.emplace_back(userRulePaths[index]);
-			userRuleInfo.erase(userRuleInfo.begin() + index);
+			if (result == RuleFindResult::SUBDIRECTORY 
+				|| result == RuleFindResult::SUBDIR_DIFF_SEC_OP)
+			{
+				rulesNotSorted = true;
+
+				removedRules.emplace_back(location);
+				userRuleInfo.emplace_back(
+					to_string(static_cast<int>(SecOption::REMOVED))
+					+ '|' + to_string(static_cast<int>(type))
+					+ '|' + location);
+
+				userRulesNotSorted = true;
+			}
+
+			else
+			{
+				removedRules.emplace_back(userRulePaths[index]);
+				userRuleInfo.erase(userRuleInfo.begin() + index);
+			}
+		}
+
+		else if (result == RuleFindResult::SUBDIR_DIFF_SEC_OP)
+		{
+			switchedRules.emplace_back(location);
+			userRuleInfo.emplace_back(to_string(static_cast<int>(option))
+				+ '|' + to_string(static_cast<int>(type))
+				+ '|' + location);
+
+			userRulesNotSorted = true;
 		}
 
 		else if (result == RuleFindResult::DIFF_SEC_OP)
+		{
+			switchedRules.emplace_back(location);
 			userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+		}
 	}
 }
 
-void DataFileManager::WriteToFile(const vector<RuleData>& ruleData, WriteType writeType)
+void DataFileManager::InsertNewEntries(const vector<shared_ptr<RuleData>>& ruleData)
 {
 	try
 	{
-		if (writeType == WriteType::REMOVED_RULES)
-		{
-			for (const auto& rule : removedRules)
+		auto hashToStr = 
+			[](const vector<BYTE>& hash)
 			{
-				const auto rulePathRange = equal_range(
-					rulePaths.begin(), rulePaths.end(), rule,
-					[&rule](const string &lhs, const string &rhs)
-					{
-						bool ret = false;
-						if (rhs == rule)
-							ret = lhs.compare(0, rule.length(), rule) < 0;
+				string hashStr;
+				string hexStr;
+				for (const auto byte : hash)
+					hashStr += byte;
 
-						if (lhs == rule)
-							ret = rhs.compare(0, rule.length(), rule) > 0;
+				StringSource(hashStr, true,
+					new HexEncoder(new StringSink(hexStr)));
+				return hexStr;
+			};
 
-						return ret;
-					});
-				
-				const auto ruleInfoRange = make_pair(
-					ruleInfo.begin() + distance(rulePathRange.second, rulePaths.end()),
-					ruleInfo.begin() + distance(rulePathRange.first, rulePaths.end()));
+		int option;
+		int type;
+		string location;
+		string guid;
+		string friendlyName;
+		uintmax_t itemSize;
+		uintmax_t lastModified;
+		string md5Hash;
+		string sha256Hash;
 
-				rulePaths.erase(rulePathRange.first, rulePathRange.second);
-				ruleInfo.erase(ruleInfoRange.first, ruleInfoRange.second);
-			}
-		}
-
-		else
+		for (const auto& rule : ruleData)
 		{
-			int option;
-			int type;
-			string location;
-			string guid;
+			option = static_cast<int>(get<SEC_OPTION>(*rule));
+			type = static_cast<int>(get<RULE_TYPE>(*rule));
+			location = get<FILE_LOCATION>(*rule);
+			guid = get<RULE_GUID>(*rule);
+			friendlyName = get<FRIENDLY_NAME>(*rule);
+			itemSize = get<ITEM_SIZE>(*rule);
+			lastModified = get<LAST_MODIFIED>(*rule);
 
-			for (const auto& rule : ruleData)
-			{
-				option = static_cast<int>(get<SEC_OPTION>(rule));
-				type = static_cast<int>(get<RULE_TYPE>(rule));
-				location = get<FILE_LOCATION>(rule);
-				guid = *get<RULE_GUID>(rule);
+			rulesAdded = true;
 
-				if (writeType == WriteType::CREATED_RULES)
-				{
-					rulesAdded = true;
-
-					rulePaths.emplace_back(location);
-					ruleInfo.emplace_back(to_string(option) + '|' + to_string(type)
-						+ '|' + location + '|' + guid + '\n');
-				}
-
-				else if (writeType == WriteType::SWITCHED_RULES)
-				{
-					if (rulesAdded)
-					{
-						sort(ruleInfo.begin(), ruleInfo.end(),
-							[](const string &str1, const string &str2)
-						{
-							return str1.substr(RULE_PATH_POS,
-								str1.find_last_of("|") - 4)
-								< str2.substr(RULE_PATH_POS,
-									str2.find_last_of("|") - 4);
-						});
-
-						rulePaths.clear();
-						for (const auto& rule : ruleInfo)
-						{
-							rulePaths.emplace_back(rule.substr(RULE_PATH_POS,
-								rule.find_last_of("|") - 4));
-						}
-
-						rulesAdded = false;
-						rulesNotSorted = false;
-					}
-
-					auto iterator = lower_bound(
-						rulePaths.begin(), rulePaths.end(), location);
-
-					size_t index = distance(rulePaths.begin(), iterator);
-
-					ruleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
-				}
-			}
+			rulePaths.emplace_back(location);
+			ruleInfo.emplace_back(to_string(option) + '|' + 
+				to_string(type)+ '|' + location + '|' + guid + '|' +
+				friendlyName + '|' + to_string(itemSize) + '|' + to_string(lastModified) + '|' +
+				hashToStr(get<ITEM_DATA>(*rule)) + '|' + hashToStr(get<SHA256_HASH>(*rule)) + '\n');
 		}
 
 		ReorganizePolicyData();
@@ -395,19 +486,107 @@ void DataFileManager::WriteToFile(const vector<RuleData>& ruleData, WriteType wr
 	}
 }
 
-void DataFileManager::ReorganizePolicyData()
+void DataFileManager::SwitchEntries(SecOption option)
 {
-	if (rulesNotSorted)
+	if (rulesAdded)
 	{
-		sort(userRuleInfo.begin(), userRuleInfo.end());
-
 		sort(ruleInfo.begin(), ruleInfo.end(),
 			[](const string &str1, const string &str2)
 			{
 				return str1.substr(RULE_PATH_POS,
-					str1.find_last_of("|") - 4)
+					str1.find("|{") - 4)
 					< str2.substr(RULE_PATH_POS,
-					str2.find_last_of("|") - 4);
+						str2.find("|{") - 4);
+			});
+
+		rulePaths.clear();
+		for (const auto& rule : ruleInfo)
+		{
+			rulePaths.emplace_back(rule.substr(RULE_PATH_POS,
+				rule.find("|{") - 4));
+		}
+
+		rulesAdded = false;
+		rulesNotSorted = false;
+	}
+
+	for (const auto& rule : switchedRules)
+	{
+		auto switchedRulesBegin = std::lower_bound(rulePaths.begin(), rulePaths.end(), rule);
+
+		auto switchedRulesEnd = std::upper_bound(switchedRulesBegin, rulePaths.end(), rule,
+			[&rule](string const& str1, string const& str2)
+			{
+				// compare UP TO the length of the prefix and no farther
+				if (auto cmp = strncmp(str1.data(), str2.data(), rule.size()))
+					return cmp < 0;
+
+				// The strings are equal to the length of the prefix so
+				// behave as if they are equal. That means s1 < s2 == false
+				return false;
+			});
+
+		auto ruleInfoRange = make_pair(
+			ruleInfo.begin() + distance(rulePaths.begin(), switchedRulesBegin),
+			ruleInfo.begin() + distance(rulePaths.begin(), switchedRulesEnd));
+
+		for (auto it = ruleInfoRange.first; it != ruleInfoRange.second; ++it)
+			it->at(SEC_OPTION) = static_cast<char>(option) + '0';
+	}
+
+	ReorganizePolicyData();
+}
+
+void DataFileManager::RemoveOldEntries()
+{
+	for (const auto& rule : removedRules)
+	{
+		auto removedRulesBegin = std::lower_bound(rulePaths.begin(), rulePaths.end(), rule);
+
+		auto removedRulesEnd = std::upper_bound(removedRulesBegin, rulePaths.end(), rule,
+			[&rule](string const& str1, string const& str2)
+		{
+			// compare UP TO the length of the prefix and no farther
+			if (auto cmp = strncmp(str1.data(), str2.data(), rule.size()))
+				return cmp < 0;
+
+			// The strings are equal to the length of the prefix so
+			// behave as if they are equal. That means s1 < s2 == false
+			return false;
+		});
+
+		auto ruleInfoRange = make_pair(
+			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesBegin),
+			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesEnd));
+
+		rulePaths.erase(removedRulesBegin, removedRulesEnd);
+		ruleInfo.erase(ruleInfoRange.first, ruleInfoRange.second);
+	}
+
+	ReorganizePolicyData();
+}
+
+void DataFileManager::ReorganizePolicyData()
+{
+	if (userRulesNotSorted)
+		sort(userRuleInfo.begin(), userRuleInfo.end(),
+			[](const string &str1, const string &str2)
+			{
+				return str1.substr(RULE_PATH_POS,
+					str1.length())
+					< str2.substr(RULE_PATH_POS,
+						str2.length());
+			});
+
+	if (rulesNotSorted)
+	{
+		sort(ruleInfo.begin(), ruleInfo.end(),
+			[](const string &str1, const string &str2)
+			{
+				return str1.substr(RULE_PATH_POS,
+					str1.find("|{") - 4)
+					< str2.substr(RULE_PATH_POS,
+					str2.find("|{") - 4);
 			});
 	}
 
@@ -565,10 +744,10 @@ void DataFileManager::ListRules() const
 			return str1[SEC_OPTION] > str2[SEC_OPTION];
 
 		fs::path path1(str1.substr(RULE_PATH_POS,
-			str1.find_last_of("|") - 4));
+			str1.length()));
 
 		fs::path path2(str2.substr(RULE_PATH_POS,
-			str2.find_last_of("|") - 4));
+			str2.length()));
 
 		if (path1.parent_path() != path2.parent_path())
 			return path1.parent_path() < path2.parent_path();
@@ -592,7 +771,7 @@ void DataFileManager::ListRules() const
 				if (sortedRules[index][SEC_OPTION] == whiteList)
 				{
 					cout << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].find_last_of("|") - 4)
+						sortedRules[index].length())
 						<< "\n";
 				}
 				else
@@ -610,7 +789,7 @@ void DataFileManager::ListRules() const
 				if (sortedRules[index][SEC_OPTION] == blackList)
 				{
 					cout << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].find_last_of("|") - 4)
+						sortedRules[index].length())
 						<< "\n";
 				}
 				else

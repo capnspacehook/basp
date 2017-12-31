@@ -1,4 +1,5 @@
 #include "AppSecPolicy.hpp"
+#include "SecPolicy.hpp"
 #include "HashRule.hpp"
 #include "WinReg.hpp"
 
@@ -33,16 +34,30 @@ const string HashRule::fileProps[5] = {
 	"CompanyName" };
 
 //sets the 'subKey' parameter to the rule's guid
-void HashRule::CreateNewHashRule(const string &fileName,
-	const SecOption &secOption, const uintmax_t &fileSize, std::shared_ptr<std::string> subKey)
+void HashRule::CreateNewHashRule(shared_ptr<RuleData>& ruleData)
 {
-	itemSize = fileSize;
+	string fileName = get<FILE_LOCATION>(*ruleData);
+
+	itemSize = get<ITEM_SIZE>(*ruleData);
 	EnumFriendlyName(fileName);
 	EnumCreationTime();
 	HashDigests(fileName);
 	CreateGUID();
-	WriteToRegistry(fileName, secOption);
-	*subKey = guid;
+	WriteToRegistry(fileName, get<SEC_OPTION>(*ruleData));
+	
+	get<RULE_GUID>(*ruleData) = guid;
+	get<FRIENDLY_NAME>(*ruleData) = friendlyName;
+	get<ITEM_SIZE>(*ruleData) = itemSize;
+	get<LAST_MODIFIED>(*ruleData) = lastModified;
+	get<ITEM_DATA>(*ruleData) = itemData;
+	get<SHA256_HASH>(*ruleData) = sha256Hash;
+
+	SecPolicy::createdRules++;
+}
+
+void HashRule::UpdateRule(shared_ptr<RuleData>& ruleData)
+{
+	SecPolicy::createdRules++;
 }
 
 void HashRule::EnumFileVersion(const string &fileName)
@@ -162,6 +177,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 			else
 				temp[i] = "";
 		}
+
 		//format FriendlyName
 		friendlyName = temp[0] + fileVersion;
 		for (int i = 1; i < 5; i++)
@@ -212,7 +228,7 @@ inline vector<BYTE> HashRule::convertStrToByte(string &str) noexcept
 	{
 		// Convert hex char to byte
 		if (str[i] >= '0' && str[i] <= '9') str[i] -= '0';
-		else str[i] -= 55;  // 55 = 'str[i]' - 10
+		else str[i] -= 55;
 		if (str[i + 1] >= '0' && str[i + 1] <= '9') str[i + 1] -= '0';
 		else str[i + 1] -= 55;
 
@@ -313,7 +329,7 @@ void HashRule::WriteToRegistry(const string &fileName,
 	}
 }
 
-void HashRule::SwitchRule(const std::string &ruleGuid, SecOption option)
+void HashRule::SwitchRule(std::shared_ptr<RuleData>& ruleData)
 {
 	using namespace winreg;
 	
@@ -325,9 +341,12 @@ void HashRule::SwitchRule(const std::string &ruleGuid, SecOption option)
 		string policyPath =
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
 
-		guid = ruleGuid;
+		SecOption originalOp = get<SEC_OPTION>(*ruleData);
+		SecOption swappedOp = static_cast<SecOption>(!static_cast<bool>(originalOp));
 
-		if (option == SecOption::WHITELIST)
+		guid = get<RULE_GUID>(*ruleData);
+
+		if (originalOp == SecOption::BLACKLIST)
 			ruleType = "\\0\\Hashes\\";
 		else
 			ruleType = "\\262144\\Hashes\\";
@@ -355,12 +374,15 @@ void HashRule::SwitchRule(const std::string &ruleGuid, SecOption option)
 			KEY_READ);
 
 		sha256Hash = hashRuleKey.GetBinaryValue("ItemData");
+		hashRuleKey.Close();
 
-		WriteToRegistry(fileName, option);
+		//write swapped rule to registry
+		WriteToRegistry(fileName, swappedOp);
 
-		//flip option and delete old rule
-		option = static_cast<SecOption>(!static_cast<bool>(option));
-		RemoveRule(guid, option);
+		//remove old rule
+		RemoveRule(guid, originalOp);
+
+		SecPolicy::switchedRules++;
 	}
 	catch (const RegException &e)
 	{
@@ -372,7 +394,7 @@ void HashRule::SwitchRule(const std::string &ruleGuid, SecOption option)
 	}
 }
 
-void HashRule::RemoveRule(const string &guid, const SecOption &policy)
+void HashRule::RemoveRule(const string &guid, SecOption policy)
 {
 	using namespace winreg;
 

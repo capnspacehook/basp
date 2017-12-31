@@ -261,7 +261,7 @@ void CheckElevated()
 	if (!fRet)
 	{
 		cout << "This program requires administrator access to function correctly."
-			<< "Please run this program again as an Administrator.\n";
+			<< "Please rerun this program again as an Administrator.\n";
 		exit(-1);
 	}
 }
@@ -315,6 +315,9 @@ bool CheckDirConflicts(vector<string> &files)
 		if (!noConflicts)
 			break;
 	}
+
+	if (noConflicts)
+		sort(files.begin(), files.end());
 	
 	return noConflicts;
 }

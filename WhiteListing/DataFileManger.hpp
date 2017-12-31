@@ -34,6 +34,7 @@ namespace AppSecPolicy
 		~DataFileManager()
 		{
 			ClosePolicyFile();
+			CloseHandle(policyFileHandle);
 		}
 
 		std::string GetGlobalSettings() const
@@ -50,9 +51,11 @@ namespace AppSecPolicy
 		void CheckPassword(std::string&);
 		void SetNewPassword();
 		RuleFindResult FindRule(SecOption, RuleType,
-			const std::string&, std::string&) const;
+			const std::string&, RuleData&) const;
 		void UpdateUserRules(const std::vector<UserRule>&, bool);
-		void WriteToFile(const std::vector<RuleData>&, WriteType);
+		void InsertNewEntries(const std::vector<std::shared_ptr<RuleData>>&);
+		void SwitchEntries(SecOption);
+		void RemoveOldEntries();
 		void ListRules() const;
 
 	private:
@@ -70,6 +73,7 @@ namespace AppSecPolicy
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfSalt;
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfHash;
 
+		HANDLE policyFileHandle;
 		const std::string policyFileName = "Policy Settings.dat";
 		const std::string policyFileHeader = "Policy Settings\n";
 		ProtectedPtr<std::string, StringSerializer> policyData;
@@ -78,15 +82,19 @@ namespace AppSecPolicy
 
 		std::vector<std::string> userRuleInfo;
 		std::vector<std::string> userRulePaths;
+
+		std::vector<std::string> switchedRules;
 		std::vector<std::string> removedRules;
 
 		std::vector<std::string> ruleInfo;		//data of already created rules
 		std::vector<std::string> rulePaths;		//paths of created rules for searching
 		
 		bool rulesAdded = false;
-		bool rulesNotSorted = true;
 		bool passwordReset = false;
 		bool policyDataModified = false;
+
+		bool rulesNotSorted = true;
+		bool userRulesNotSorted = true;
 
 		std::vector<std::string> executableTypes = {
 			"ADE", "ADP", "APPLICATION", "BAS", "BAT", "BGI", "CHM", "CMD", "COM",

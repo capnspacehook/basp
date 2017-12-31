@@ -19,6 +19,11 @@ using namespace std;
 using namespace AppSecPolicy;
 namespace fs = std::experimental::filesystem;
 
+atomic_uintmax_t SecPolicy::createdRules = 0;
+atomic_uintmax_t SecPolicy::switchedRules = 0;
+atomic_uintmax_t SecPolicy::skippedRules = 0;
+atomic_uintmax_t SecPolicy::removedRules = 0;
+
 //create hash rules recursively in 'path'
 void SecPolicy::CreatePolicy(const string &path, const SecOption &op, 
 	RuleType rType)
@@ -30,9 +35,13 @@ void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
 	secOption = op;
 	ruleType = rType;
 
+	string lowerPath;
+	transform(path.begin(), path.end(),
+		back_inserter(lowerPath), tolower);
+
 	enteredRules.emplace_back(
-		secOption, ruleType, path);
-	EnumAttributes(path);
+		secOption, ruleType, lowerPath);
+	EnumAttributes(lowerPath);
 }
 
 //overload that creates hash rules for each of the files in the vector 'paths'
@@ -46,8 +55,12 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	secOption = op;
 	ruleType = rType;
 
+	string lowerPath;
 	for (const auto &path : paths)
 	{
+		transform(path.begin(), path.end(),
+			back_inserter(lowerPath), tolower);
+
 		enteredRules.emplace_back(
 			secOption, ruleType, path);
 		EnumAttributes(path);
@@ -71,25 +84,26 @@ void SecPolicy::TempRun(const string &path)
 		if (size > 0)
 		{
 			//create temporary hash rule
-			shared_ptr<string> subKey = make_shared<string>("");
 			HashRule tempRule;
+			auto tempRuleData = make_shared<RuleData>(RuleData());
+			get<SEC_OPTION>(*tempRuleData) = SecOption::WHITELIST;
+			get<RULE_TYPE>(*tempRuleData) = ruleType;
+			get<FILE_LOCATION>(*tempRuleData) = file.string();
 
-			string guid;
 			RuleFindResult result = dataFileMan.FindRule(
-				SecOption::BLACKLIST, ruleType, file.string(), guid);
+				SecOption::BLACKLIST, ruleType, file.string(), *tempRuleData);
 
 			if (result == RuleFindResult::NO_MATCH)
 			{
 				createdRules++;
-				tempRule.CreateNewHashRule(path, SecOption::WHITELIST, size,
-					subKey);
+				tempRule.CreateNewHashRule(tempRuleData);
 				ApplyChanges(false);
 			}
 
 			else if (result == RuleFindResult::EXACT_MATCH)
 			{
 				switchedRules++;
-				tempRule.SwitchRule(guid, SecOption::WHITELIST);
+				tempRule.SwitchRule(tempRuleData);
 				ApplyChanges(false);
 			}
 
@@ -104,7 +118,7 @@ void SecPolicy::TempRun(const string &path)
 
 			cout << ". Executing file now...\n\n";
 
-			// start the program up
+			//start the program up
 			STARTUPINFO si;
 			PROCESS_INFORMATION pi;
 
@@ -113,8 +127,8 @@ void SecPolicy::TempRun(const string &path)
 
 			si.cb = sizeof(si);
 			bool procCreated = CreateProcess(
+				(char*)file.string().c_str(),
 				NULL,
-				(char*) file.string().c_str(),
 				NULL,
 				NULL,
 				FALSE,
@@ -136,14 +150,16 @@ void SecPolicy::TempRun(const string &path)
 			if (result == RuleFindResult::NO_MATCH)
 			{
 				removedRules++;
-				tempRule.RemoveRule(*subKey, SecOption::WHITELIST);
+				tempRule.RemoveRule(get<RULE_GUID>(*tempRuleData), 
+					SecOption::WHITELIST);
 				cout << "Temporary rule deleted\n";
 			}
 
 			else if (result == RuleFindResult::EXACT_MATCH)
 			{
 				switchedRules++;
-				tempRule.SwitchRule(guid, SecOption::BLACKLIST);
+				get<SEC_OPTION>(*tempRuleData) = SecOption::BLACKLIST;
+				tempRule.SwitchRule(tempRuleData);
 				cout << "Rule switched back to deny mode.\n";
 			}
 		}
@@ -200,14 +216,14 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 
 		si.cb = sizeof(si);
 		bool procCreated = CreateProcess(
+			exeFile.string().c_str(),
 			NULL,
-			(char*) exeFile.string().c_str(),
 			NULL,
 			NULL,
 			FALSE,
 			NULL,
 			NULL,
-			(char*) exeFile.parent_path().string().c_str(),
+			exeFile.parent_path().string().c_str(),
 			&si,
 			&pi);
 
@@ -232,7 +248,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 			threads.emplace_back(
 				&HashRule::RemoveRule,
 				HashRule(),
-				*get<RULE_GUID>(tempRuleID),
+				get<RULE_GUID>(*tempRuleID),
 				SecOption::WHITELIST);
 		}
 
@@ -246,8 +262,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 			threads.emplace_back(
 				&HashRule::SwitchRule,
 				HashRule(),
-				*get<RULE_GUID>(tempRuleID),
-				SecOption::BLACKLIST);
+				tempRuleID);
 		}
 
 		cout << "done" << endl;
@@ -273,10 +288,14 @@ void SecPolicy::RemoveRules(const string &path)
 	CheckGlobalSettings();
 	StartTimer();
 
+	string lowerPath;
+	transform(path.begin(), path.end(),
+		back_inserter(lowerPath), tolower);
+
 	ruleRemoval = true;
 	enteredRules.emplace_back(
-		secOption, ruleType, path);
-	EnumAttributes(path);
+		secOption, ruleType, lowerPath);
+	EnumAttributes(lowerPath);
 }
 
 void SecPolicy::RemoveRules(const vector<string> &paths)
@@ -285,12 +304,17 @@ void SecPolicy::RemoveRules(const vector<string> &paths)
 	CheckGlobalSettings();
 	StartTimer();
 
+	string lowerPath;
+
 	ruleRemoval = true;
 	for (const auto &path : paths)
 	{
+		transform(path.begin(), path.end(),
+			back_inserter(lowerPath), tolower);
+
 		enteredRules.emplace_back(
-			secOption, ruleType, path);
-		EnumAttributes(path);
+			secOption, ruleType, lowerPath);
+		EnumAttributes(lowerPath);
 	}
 }
 
@@ -461,7 +485,7 @@ void SecPolicy::CheckGlobalSettings()
 		{
 			cout << "Proceed with caution! Unauthorized changes have been made "
 				<< "to the global policy settings.\n"
-				<< "Correct settings were reapplied.\n\n";
+				<< "Correct settings were reapplied.\n";
 
 			policySettings.SetDwordValue("AuthenticodeEnabled", 
 				static_cast<int>(globalSettings[AUTHENTICODE_ENABLED] - '0'));
@@ -596,8 +620,6 @@ void SecPolicy::EnumDirContents(const fs::path& dir, uintmax_t &fileSize)
 					}
 				}
 			}
-			else
-				continue;
 		}
 	}
 	catch (const fs::filesystem_error &e)
@@ -630,46 +652,36 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 			if (binary_search(executableTypes.cbegin(),
 				executableTypes.cend(), extension))
 			{
-				string path;
-				string guid;
-
-				string temp = file.string();
-				transform(temp.begin(), temp.end(),
-					back_inserter(path), tolower);
-
+				RuleData ruleData;
 				RuleFindResult result = dataFileMan.FindRule(
-					secOption, ruleType, path, guid);
+					secOption, ruleType, file.string(), ruleData);
 
 				if (result == RuleFindResult::NO_MATCH)
 				{
-					createdRules++;
-
-					createdRulesData.emplace_back(make_tuple(secOption, ruleType,
-						path, make_shared<string>(guid)));
+					get<SEC_OPTION>(ruleData) = secOption;
+					get<FILE_LOCATION>(ruleData) = file.string();
+					get<ITEM_SIZE>(ruleData) = fileSize;
+					createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 					threads.emplace_back(
 						&HashRule::CreateNewHashRule,
 						HashRule(),
-						path,
-						secOption,
-						fileSize,
-						get<RULE_GUID>(createdRulesData.back()));
+						createdRulesData.back());
 				}
 				else if (result == RuleFindResult::DIFF_SEC_OP)
 				{
-					switchedRules++;
-
-					switchedRulesData.emplace_back(make_tuple(secOption, ruleType,
-						path, make_shared<string>(guid)));
+					switchedRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 					threads.emplace_back(
 						&HashRule::SwitchRule,
 						HashRule(),
-						*get<RULE_GUID>(switchedRulesData.back()),
-						secOption);
+						switchedRulesData.back());
 				}
 				else if (result == RuleFindResult::EXACT_MATCH)
+				{
 					skippedRules++;
+				}
+					
 			}
 		}
 	}
@@ -686,34 +698,30 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 void SecPolicy::DeleteRule(const fs::path &file)
 {
 	string path;
-	string guid;
+	RuleData ruleData;
 	string temp = file.string();
 	transform(temp.begin(), temp.end(),
 		back_inserter(path), tolower);
 
 	SecOption ruleOp = SecOption::BLACKLIST;
 	RuleFindResult result = dataFileMan.FindRule(
-		ruleOp, RuleType::HASHRULE, path, guid);
+		ruleOp, RuleType::HASHRULE, path, ruleData);
 
 	if (result != RuleFindResult::NO_MATCH)
 	{
 		if (result == RuleFindResult::DIFF_SEC_OP)
 			ruleOp = SecOption::WHITELIST;
 
-		removedRulesData.emplace_back(make_tuple(ruleOp, RuleType::HASHRULE,
-			path, make_shared<string>(guid)));
-
 		removedRules++;
 		threads.emplace_back(
 			&HashRule::RemoveRule,
 			HashRule(),
-			*get<RULE_GUID>(removedRulesData.back()),
+			get<RULE_GUID>(ruleData),
 			ruleOp);
 	}
 
 	else
 		skippedRules++;
-
 }
 
 //print how many rules were created and runtime of rule creation
@@ -769,19 +777,21 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 		executableTypes.pop_back();
 		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
 
+		policySettings.Close();
+
 		//write changes to settings file
 		if (updateSettings && !tempRuleCreation)
 		{
 			dataFileMan.UpdateUserRules(enteredRules, ruleRemoval);
 
 			if (createdRules)
-				dataFileMan.WriteToFile(createdRulesData, WriteType::CREATED_RULES);
+				dataFileMan.InsertNewEntries(createdRulesData);
 
 			if (switchedRules)
-				dataFileMan.WriteToFile(switchedRulesData, WriteType::SWITCHED_RULES);
+				dataFileMan.SwitchEntries(secOption);
 
 			if (removedRules)
-				dataFileMan.WriteToFile(removedRulesData, WriteType::REMOVED_RULES);
+				dataFileMan.RemoveOldEntries();
 		}
 
 		cout << "done\n\n";

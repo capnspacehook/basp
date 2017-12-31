@@ -3,12 +3,12 @@
 
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <atomic>
 #include <chrono>
 #include <thread>
 #include <string>
 #include <vector>
-#include <queue>
 #include <tuple>
 #pragma once
 
@@ -46,6 +46,15 @@ namespace AppSecPolicy
 		void EnumLoadedDLLs(const std::string &exeFile);
 		void ListRules();
 
+	protected:
+		friend class HashRule;
+
+		//statistical variables
+		static std::atomic_uintmax_t createdRules;
+		static std::atomic_uintmax_t switchedRules;
+		static std::atomic_uintmax_t skippedRules;
+		static std::atomic_uintmax_t removedRules;
+
 	private:
 		void CheckGlobalSettings();
 		bool SetPrivileges(const std::string&, bool);
@@ -69,6 +78,7 @@ namespace AppSecPolicy
 		//file extensions that will be enforced
 		std::vector<std::string> executableTypes;
 
+		bool updatedRules = false;
 		bool tempRuleCreation = false;
 		bool ruleRemoval = false;
 
@@ -80,16 +90,11 @@ namespace AppSecPolicy
 		RuleType ruleType;
 
 		std::vector<UserRule> enteredRules;
-
-		std::vector<RuleData> createdRulesData;
-		std::vector<RuleData> switchedRulesData;
-		std::vector<RuleData> removedRulesData;
-
-		//statistical variables
-		std::size_t createdRules = 0;
-		std::size_t switchedRules = 0;
-		std::size_t skippedRules = 0;
-		std::size_t removedRules = 0;
+		
+		std::vector<std::shared_ptr<RuleData>> createdRulesData;
+		std::vector<std::shared_ptr<RuleData>> switchedRulesData;
+		std::vector<std::shared_ptr<RuleData>> removededRulesData;
+		
 		std::chrono::time_point<std::chrono::steady_clock> startTime;
 	};
 }

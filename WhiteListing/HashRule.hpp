@@ -20,13 +20,15 @@ namespace AppSecPolicy
 		{
 			other.swap(*this);
 		}
-		void CreateNewHashRule(const std::string &fileName,
-			const AppSecPolicy::SecOption &policy,
-			const uintmax_t& fileSize, std::shared_ptr<std::string>);
-		void SwitchRule(const std::string &guid,
-			AppSecPolicy::SecOption option);
+		
+		void CreateNewHashRule(std::shared_ptr<RuleData>&);
+
+		void UpdateRule(std::shared_ptr<RuleData>&);
+
+		void SwitchRule(std::shared_ptr<RuleData>&);
+
 		void RemoveRule(const std::string &guid,
-			const AppSecPolicy::SecOption &policy);
+			SecOption policy);
 
 		void swap(HashRule& other) noexcept
 		{
@@ -69,8 +71,8 @@ namespace AppSecPolicy
 		std::string friendlyName = "";
 		static const int hashAlg = 32771;
 		std::vector<BYTE> itemData;
-		long long itemSize;
-		long long lastModified;
+		uintmax_t itemSize;
+		uintmax_t lastModified;
 		static const int shaHashAlg = 32780;
 		std::vector<BYTE> sha256Hash;
 	};
