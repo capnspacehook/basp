@@ -8,6 +8,7 @@ Well, no more. Now with this tool, files and directories can be whitelisted or b
 
 Current features:
 * Recursive rule creation for single files and all files within directories
+* Scanning and updating rules when files are changed 
 * Easy removal of rules
 * Secure password protection of tool
 * Encrypted settings file stores policy settings and rules separate from the Windows registry
