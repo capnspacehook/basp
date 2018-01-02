@@ -56,6 +56,7 @@ namespace AppSecPolicy
 		void UpdateUserRules(const std::vector<UserRule>&, bool);
 		void InsertNewEntries(const std::vector<std::shared_ptr<RuleData>>&);
 		void SwitchEntries(SecOption);
+		void UpdateEntries(SecOption, const std::vector<std::shared_ptr<RuleData>>&);
 		void RemoveOldEntries();
 		void ListRules() const;
 
@@ -65,8 +66,9 @@ namespace AppSecPolicy
 		void ClosePolicyFile();
 		
 		RuleFindResult FindUserRule(SecOption, RuleType, 
-			const std::string&, std::size_t&) const;
+			const std::string&, std::size_t&, bool&) const;
 		RuleData StringToRuleData(const std::string&) const;
+		std::string RuleDataToString(const RuleData&) const;
 		void ReorganizePolicyData();
 
 		const unsigned iterations = 1000;	//iterations for PBKDF2

@@ -21,11 +21,12 @@ namespace fs = std::experimental::filesystem;
 
 atomic_uintmax_t SecPolicy::createdRules = 0;
 atomic_uintmax_t SecPolicy::switchedRules = 0;
+atomic_uintmax_t SecPolicy::updatedRules = 0;
 atomic_uintmax_t SecPolicy::skippedRules = 0;
 atomic_uintmax_t SecPolicy::removedRules = 0;
 
 //create hash rules recursively in 'path'
-void SecPolicy::CreatePolicy(const string &path, const SecOption &op, 
+void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
 	RuleType rType)
 {
 	dataFileMan.VerifyPassword(passwordGuess);
@@ -68,7 +69,7 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 }
 
 //create a whitelisting rule, execute the file passed in, and delete the rule
-void SecPolicy::TempRun(const string &path) 
+void SecPolicy::TempRun(const string &path)
 {
 	try
 	{
@@ -103,7 +104,7 @@ void SecPolicy::TempRun(const string &path)
 			else if (result == RuleFindResult::EXACT_MATCH)
 			{
 				switchedRules++;
-				tempRule.SwitchRule(tempRuleData);
+				tempRule.SwitchRule(size, tempRuleData);
 				ApplyChanges(false);
 			}
 
@@ -134,7 +135,7 @@ void SecPolicy::TempRun(const string &path)
 				FALSE,
 				NULL,
 				NULL,
-				(char*) file.parent_path().string().c_str(),
+				(char*)file.parent_path().string().c_str(),
 				&si,
 				&pi);
 
@@ -142,7 +143,7 @@ void SecPolicy::TempRun(const string &path)
 			{
 				cerr << "CreateProcess error: " << GetLastError() << endl;
 			}
-				
+
 			Sleep(1000);
 			CloseHandle(pi.hProcess);
 			CloseHandle(pi.hThread);
@@ -150,7 +151,7 @@ void SecPolicy::TempRun(const string &path)
 			if (result == RuleFindResult::NO_MATCH)
 			{
 				removedRules++;
-				tempRule.RemoveRule(get<RULE_GUID>(*tempRuleData), 
+				tempRule.RemoveRule(get<RULE_GUID>(*tempRuleData),
 					SecOption::WHITELIST);
 				cout << "Temporary rule deleted\n";
 			}
@@ -159,7 +160,7 @@ void SecPolicy::TempRun(const string &path)
 			{
 				switchedRules++;
 				get<SEC_OPTION>(*tempRuleData) = SecOption::BLACKLIST;
-				tempRule.SwitchRule(tempRuleData);
+				tempRule.SwitchRule(size, tempRuleData);
 				cout << "Rule switched back to deny mode.\n";
 			}
 		}
@@ -181,7 +182,7 @@ void SecPolicy::TempRun(const string &path)
 }
 
 //overload that temporaily whitelists 'dir', and executes 'file'
-void SecPolicy::TempRun(const string &dir, const string &file) 
+void SecPolicy::TempRun(const string &dir, const string &file)
 {
 	try
 	{
@@ -197,7 +198,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 
 		tempRuleCreation = true;
 		CreatePolicy(dir, SecOption::WHITELIST);
-		
+
 		//wait for hash creation threads to finish before trying 
 		//to delete the rules they may or may not be finished
 		for (auto &t : threads)
@@ -256,20 +257,21 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 			t.join();
 
 		threads.clear();
-		for (const auto &tempRuleID : switchedRulesData)
+		for (const auto &tempRule : updatedRulesData)
 		{
 			switchedRules++;
 			threads.emplace_back(
 				&HashRule::SwitchRule,
 				HashRule(),
-				tempRuleID);
+				get<ITEM_SIZE>(*tempRule),
+				tempRule);
 		}
 
 		cout << "done" << endl;
 
 		//clear temp rules
 		createdRulesData.clear();
-		switchedRulesData.clear();
+		updatedRulesData.clear();
 	}
 	catch (const fs::filesystem_error &e)
 	{
@@ -332,13 +334,13 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 	si.cb = sizeof(si);
 	bool procCreated = CreateProcess(
 		NULL,
-		(char*) exeFile.c_str(),
+		(char*)exeFile.c_str(),
 		NULL,
 		NULL,
 		TRUE,
 		DEBUG_PROCESS,
 		NULL,
-		(char*) exePath.parent_path().string().c_str(),
+		(char*)exePath.parent_path().string().c_str(),
 		&si,
 		&pi);
 
@@ -453,7 +455,7 @@ bool SecPolicy::SetPrivileges(const string& privName, bool enablePriv)
 void SecPolicy::CheckGlobalSettings()
 {
 	using namespace winreg;
-	try 
+	try
 	{
 		RegKey policySettings(
 			HKEY_LOCAL_MACHINE,
@@ -480,14 +482,14 @@ void SecPolicy::CheckGlobalSettings()
 			policySettings.SetDwordValue("PolicyScope", 0);
 			policySettings.SetDwordValue("TransparentEnabled", 1);
 		}
-		
+
 		if (globalSettings != dataFileMan.GetCurrentPolicySettings())
 		{
 			cout << "Proceed with caution! Unauthorized changes have been made "
 				<< "to the global policy settings.\n"
 				<< "Correct settings were reapplied.\n";
 
-			policySettings.SetDwordValue("AuthenticodeEnabled", 
+			policySettings.SetDwordValue("AuthenticodeEnabled",
 				static_cast<int>(globalSettings[AUTHENTICODE_ENABLED] - '0'));
 
 			int defaultLevel = static_cast<int>(globalSettings[DEFAULT_LEVEL] - '0');
@@ -498,10 +500,10 @@ void SecPolicy::CheckGlobalSettings()
 
 			policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
 
-			policySettings.SetDwordValue("PolicyScope", 
+			policySettings.SetDwordValue("PolicyScope",
 				static_cast<int>(globalSettings[POLCIY_SCOPE] - '0'));
 
-			policySettings.SetDwordValue("TransparentEnabled", 
+			policySettings.SetDwordValue("TransparentEnabled",
 				static_cast<int>(globalSettings[TRANSPARENT_ENABLED] - '0'));
 		}
 	}
@@ -517,7 +519,7 @@ void SecPolicy::CheckGlobalSettings()
 
 //detirmine whether file passed is a 
 //regular file or directory and process respectively
-void SecPolicy::EnumAttributes(const string &fileName) 
+void SecPolicy::EnumAttributes(const string &fileName)
 {
 	try
 	{
@@ -532,18 +534,18 @@ void SecPolicy::EnumAttributes(const string &fileName)
 			if (tempRuleCreation)
 			{
 				cout << "Temporaily whitelisting files in "
-					<< initialFile.string()  << "...";
+					<< initialFile.string() << "...";
 			}
 
 			else
 			{
-				((bool)secOption) ? action = "Whitelisting" 
+				((bool)secOption) ? action = "Whitelisting"
 					: action = "Blacklisting";
 
 				cout << action << " files in "
 					<< initialFile.string() << "...";
 			}
-			
+
 			EnumDirContents(initialFile, fileSize);
 			cout << "done" << endl;
 		}
@@ -568,7 +570,7 @@ void SecPolicy::EnumAttributes(const string &fileName)
 					initialFile.string() << endl;
 				exit(-1);
 			}
-			
+
 		}
 	}
 	catch (const fs::filesystem_error &e)
@@ -594,15 +596,9 @@ void SecPolicy::EnumDirContents(const fs::path& dir, uintmax_t &fileSize)
 					EnumDirContents(currFile.path(), fileSize);
 				else
 				{
-					if (ruleRemoval)
-						DeleteRules(currFile);
-
-					else
-					{
-						fileSize = fs::file_size(currFile);
-						if (fileSize && fs::is_regular_file(currFile))
-							CheckValidType(currFile, fileSize);
-					}
+					fileSize = fs::file_size(currFile);
+					if (fileSize && fs::is_regular_file(currFile))
+						CheckValidType(currFile, fileSize);
 				}
 			}
 		}
@@ -620,7 +616,7 @@ void SecPolicy::EnumDirContents(const fs::path& dir, uintmax_t &fileSize)
 //checks whether file is a valid type as detirmined by the list 
 //in the member variable executableTypes and if it is, start creating
 //a new hash rule for the file in a new thread
-void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
+void SecPolicy::CheckValidType(const fs::path &file, uintmax_t &fileSize)
 {
 	try
 	{
@@ -629,7 +625,7 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 			//convert file name to just the extension
 			string extension = file.extension().string();
 			extension = extension.substr(1, extension.length());
-			
+
 			transform(extension.begin(), extension.end(),
 				extension.begin(), toupper);
 
@@ -646,6 +642,7 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 					get<SEC_OPTION>(ruleData) = secOption;
 					get<FILE_LOCATION>(ruleData) = file.string();
 					get<ITEM_SIZE>(ruleData) = fileSize;
+					get<RULE_UPDATED>(ruleData) = false;
 					createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 					threads.emplace_back(
@@ -655,18 +652,25 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 				}
 				else if (result == RuleFindResult::DIFF_SEC_OP)
 				{
-					switchedRulesData.emplace_back(make_shared<RuleData>(ruleData));
+					updatedRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 					threads.emplace_back(
 						&HashRule::SwitchRule,
 						HashRule(),
-						switchedRulesData.back());
+						fileSize,
+						updatedRulesData.back());
 				}
 				else if (result == RuleFindResult::EXACT_MATCH)
 				{
-					skippedRules++;
+					updatedRulesData.emplace_back(make_shared<RuleData>(ruleData));
+
+					threads.emplace_back(
+						&HashRule::CheckIfRuleOutdated,
+						HashRule(),
+						fileSize,
+						updatedRulesData.back(),
+						true);
 				}
-					
 			}
 		}
 	}
@@ -682,13 +686,12 @@ void SecPolicy::CheckValidType(const fs::path &file, const uintmax_t &fileSize)
 
 void SecPolicy::DeleteRules(const fs::path &file)
 {
-	bool foundRules = false;
 	if (fs::is_directory(file))
 	{
 		cout << "Removing rules of " << file.string() << "...";
 
 		vector<RuleData> rulesInDir;
-		foundRules = dataFileMan.FindRulesInDir(
+		bool foundRules = dataFileMan.FindRulesInDir(
 			file.string(), rulesInDir);
 
 		if (foundRules)
@@ -744,10 +747,10 @@ void SecPolicy::PrintStats() const
 
 	if (mins > 0)
 		cout << mins << " mins, " << secs << " secs" << endl;
-	
+
 	else
 		cout << secs << " secs" << endl;
-} 
+}
 
 //make sure Windows applies policy changes
 void SecPolicy::ApplyChanges(bool updateSettings)
@@ -758,7 +761,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 	//so that it doesn't really affect anything. Changing any other of the global
 	//rules even for a split second, is a security risk.
 	using namespace winreg;
-	try 
+	try
 	{
 		cout << endl << "Applying changes...";
 
@@ -784,7 +787,10 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 			if (createdRules)
 				dataFileMan.InsertNewEntries(createdRulesData);
 
-			if (switchedRules)
+			if (updatedRules)
+				dataFileMan.UpdateEntries(secOption, updatedRulesData);
+
+			else if (switchedRules)
 				dataFileMan.SwitchEntries(secOption);
 
 			if (removedRules)

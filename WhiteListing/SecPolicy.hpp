@@ -1,6 +1,8 @@
 #include "AppSecPolicy.hpp"
 #include "DataFileManger.hpp"
 
+#include "concurrentqueue.h"
+
 #include <filesystem>
 #include <iostream>
 #include <memory>
@@ -52,6 +54,7 @@ namespace AppSecPolicy
 		//statistical variables
 		static std::atomic_uintmax_t createdRules;
 		static std::atomic_uintmax_t switchedRules;
+		static std::atomic_uintmax_t updatedRules;
 		static std::atomic_uintmax_t skippedRules;
 		static std::atomic_uintmax_t removedRules;
 
@@ -65,7 +68,7 @@ namespace AppSecPolicy
 		void EnumAttributes(const std::string&);
 		void EnumDirContents(const fs::path&, uintmax_t&);
 		void DeleteRules(const fs::path&);
-		void CheckValidType(const fs::path&, const uintmax_t&);
+		void CheckValidType(const fs::path&, uintmax_t&);
 		void PrintStats() const;
 		void ApplyChanges(bool);
 
@@ -78,7 +81,6 @@ namespace AppSecPolicy
 		//file extensions that will be enforced
 		std::vector<std::string> executableTypes;
 
-		bool updatedRules = false;
 		bool tempRuleCreation = false;
 		bool ruleRemoval = false;
 
@@ -92,7 +94,7 @@ namespace AppSecPolicy
 		std::vector<UserRule> enteredRules;
 		
 		std::vector<std::shared_ptr<RuleData>> createdRulesData;
-		std::vector<std::shared_ptr<RuleData>> switchedRulesData;
+		std::vector<std::shared_ptr<RuleData>> updatedRulesData;
 		std::vector<std::shared_ptr<RuleData>> removededRulesData;
 		
 		std::chrono::time_point<std::chrono::steady_clock> startTime;

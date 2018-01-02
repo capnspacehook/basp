@@ -22,11 +22,9 @@ namespace AppSecPolicy
 		}
 		
 		void CreateNewHashRule(std::shared_ptr<RuleData>&);
-
-		void UpdateRule(std::shared_ptr<RuleData>&);
-
-		void SwitchRule(std::shared_ptr<RuleData>&);
-
+		bool CheckIfRuleOutdated(const uintmax_t&, 
+			std::shared_ptr<RuleData>&, bool = true);
+		void SwitchRule(const uintmax_t&, std::shared_ptr<RuleData>&);
 		void RemoveRule(const std::string &guid,
 			SecOption policy);
 
@@ -54,6 +52,7 @@ namespace AppSecPolicy
 		}
 
 	private:
+		void UpdateRule(const uintmax_t&, RuleData&, bool);
 		void EnumFileVersion(const std::string &fileName);
 		void EnumFriendlyName(const std::string &fileName);
 		inline void EnumCreationTime();
