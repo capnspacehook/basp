@@ -38,7 +38,7 @@ namespace Protected_Ptr
 		byte* serialize(std::string& str) const
 		{
 			const std::size_t size = str.size();
-			byte* out = new byte[size];
+			auto out = new byte[size];
 			memcpy(out, str.c_str(), size);
 			return out;
 		}

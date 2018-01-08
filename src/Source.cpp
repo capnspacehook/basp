@@ -1,14 +1,13 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 #include "AppSecPolicy.hpp"
 #include "SecPolicy.hpp"
 #include "HashRule.hpp"
-#include "Windows.h"
 
-#include <filesystem>
 #include <algorithm>
 #include <iostream>	
-#include <vector>
 #include <regex>
-#include <string>
 
 using namespace std;
 using namespace AppSecPolicy;
@@ -23,10 +22,6 @@ int main(int argc, char *argv[])
 {
 	CheckElevated();
 
-	/*SecPolicy s;
-	s.EnumLoadedDLLs("c:\\users\\root\\downloads\\putty.exe");
-	system("pause");*/
-
 	string fullArgs;
 	bool validOp = false;
 	string programName = argv[0];
@@ -37,7 +32,7 @@ int main(int argc, char *argv[])
 	
 	//get the name of the program
 	programName = programName.substr(
-		programName.rfind("\\") + 1,
+		programName.rfind('\\') + 1,
 		programName.length());
 
 	if (argc < 2)
@@ -62,7 +57,7 @@ int main(int argc, char *argv[])
 
 	//loop through all options 
 	for (const auto &op : baseOptions)
-		if (!fullArgs.find(programName + " " + op + " "))
+		if (string::npos != fullArgs.find(programName + " " + op + " "))
 			validOp = true;
 
 	if (!validOp)
@@ -241,13 +236,13 @@ int main(int argc, char *argv[])
 			}
 		}
 	}
-	system("pause");
+	//system("pause");
 }
 
 void CheckElevated()
 {
 	bool fRet = false;
-	HANDLE hToken = NULL;
+	HANDLE hToken = nullptr;
 	if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken))
 	{
 		TOKEN_ELEVATION Elevation;

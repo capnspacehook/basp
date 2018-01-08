@@ -1,8 +1,5 @@
 #include "AppSecPolicy.hpp"
 #include "Windows.h"
-
-#include <string>
-#include <vector>
 #pragma once
 
 namespace AppSecPolicy
@@ -10,7 +7,7 @@ namespace AppSecPolicy
 	class HashRule
 	{
 	public:
-		explicit HashRule() noexcept = default;
+		HashRule() {};
 		explicit HashRule(HashRule &other)
 		{
 			other.swap(*this);
@@ -20,10 +17,10 @@ namespace AppSecPolicy
 			other.swap(*this);
 		}
 		
-		void CreateNewHashRule(std::shared_ptr<RuleData>&);
+		void CreateNewHashRule(RuleDataPtr&);
 		bool CheckIfRuleOutdated(const uintmax_t&, 
-			std::shared_ptr<RuleData>&, bool = true);
-		void SwitchRule(const uintmax_t&, std::shared_ptr<RuleData>&);
+			RuleDataPtr&, bool = true);
+		void SwitchRule(const uintmax_t&, RuleDataPtr&);
 		void RemoveRule(const std::string &guid,
 			SecOption policy);
 

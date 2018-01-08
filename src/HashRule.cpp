@@ -1,14 +1,15 @@
-#include "AppSecPolicy.hpp"
 #include "SecPolicy.hpp"
 #include "HashRule.hpp"
 #include "include\WinReg.hpp"
 
-#include "Windows.h"
 #include "Strsafe.h"
 #include "Rpc.h"
 
 //nessesary for md5 to function 
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
+
+// This is an open source non-commercial project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
 #include "include\Crypto++\hex.h"
 #include "include\Crypto++\files.h"
@@ -17,8 +18,6 @@
 #include "include\Crypto++\sha.h"
 
 #include <exception>
-#include <string>
-#include <vector>
 
 #pragma comment(lib, "Version.lib")
 
@@ -34,7 +33,7 @@ const string HashRule::fileProps[5] = {
 	"CompanyName" };
 
 //sets the 'subKey' parameter to the rule's guid
-void HashRule::CreateNewHashRule(shared_ptr<RuleData>& ruleData)
+void HashRule::CreateNewHashRule(RuleDataPtr& ruleData)
 {
 	string fileName = get<FILE_LOCATION>(*ruleData);
 
@@ -47,15 +46,15 @@ void HashRule::CreateNewHashRule(shared_ptr<RuleData>& ruleData)
 	
 	get<RULE_GUID>(*ruleData) = move(guid);
 	get<FRIENDLY_NAME>(*ruleData) = move(friendlyName);
-	get<ITEM_SIZE>(*ruleData) = move(itemSize);
-	get<LAST_MODIFIED>(*ruleData) = move(lastModified);
+	get<ITEM_SIZE>(*ruleData) = itemSize;
+	get<LAST_MODIFIED>(*ruleData) = lastModified;
 	get<ITEM_DATA>(*ruleData) = move(itemData);
 	get<SHA256_HASH>(*ruleData) = move(sha256Hash);
 
 	SecPolicy::createdRules++;
 }
 
-void HashRule::SwitchRule(const uintmax_t& fileSize, shared_ptr<RuleData>& ruleData)
+void HashRule::SwitchRule(const uintmax_t& fileSize, RuleDataPtr& ruleData)
 {
 	using namespace winreg;
 
@@ -106,6 +105,7 @@ void HashRule::SwitchRule(const uintmax_t& fileSize, shared_ptr<RuleData>& ruleD
 			hashRuleKey.Close();
 
 			WriteToRegistry(fileName, swappedOp);
+			get<MOD_STATUS>(*ruleData) = ModificationType::SWITCHED;
 		}
 
 		//remove old rule
@@ -123,7 +123,7 @@ void HashRule::SwitchRule(const uintmax_t& fileSize, shared_ptr<RuleData>& ruleD
 	}
 }
 
-void HashRule::RemoveRule(const string &guid, SecOption policy)
+void HashRule::RemoveRule(const string &ruleGuid, SecOption policy)
 {
 	using namespace winreg;
 
@@ -146,8 +146,8 @@ void HashRule::RemoveRule(const string &guid, SecOption policy)
 			DELETE
 		);
 
-		tempKey.DeleteKey(guid + "\\SHA256", KEY_WOW64_32KEY);
-		tempKey.DeleteKey(guid, KEY_WOW64_32KEY);
+		tempKey.DeleteKey(ruleGuid + "\\SHA256", KEY_WOW64_32KEY);
+		tempKey.DeleteKey(ruleGuid, KEY_WOW64_32KEY);
 
 		SecPolicy::removedRules++;
 	}
@@ -162,7 +162,7 @@ void HashRule::RemoveRule(const string &guid, SecOption policy)
 }
 
 bool HashRule::CheckIfRuleOutdated(const uintmax_t& fileSize, 
-	shared_ptr<RuleData>& ruleData, bool updatingRule)
+	RuleDataPtr& ruleData, bool updatingRule)
 {
 	bool fileHashed = false;
 	bool fileChanged = false;
@@ -183,14 +183,17 @@ bool HashRule::CheckIfRuleOutdated(const uintmax_t& fileSize,
 		UpdateRule(fileSize, *ruleData, fileHashed);
 
 	if (!fileChanged && updatingRule)
+	{
 		SecPolicy::skippedRules++;
+		get<MOD_STATUS>(*ruleData) = ModificationType::SKIPPED;
+	}
 
 	return fileChanged;
 }
 
 void HashRule::UpdateRule(const uintmax_t& fileSize, RuleData& ruleData, bool fileHashed)
 {
-	itemSize = move(fileSize);
+	itemSize = fileSize;
 	guid = get<RULE_GUID>(ruleData);
 	EnumFriendlyName(get<FILE_LOCATION>(ruleData));
 
@@ -202,11 +205,11 @@ void HashRule::UpdateRule(const uintmax_t& fileSize, RuleData& ruleData, bool fi
 		get<SEC_OPTION>(ruleData));
 
 	get<FRIENDLY_NAME>(ruleData) = move(friendlyName);
-	get<ITEM_SIZE>(ruleData) = move(itemSize);
-	get<LAST_MODIFIED>(ruleData) = move(lastModified);
+	get<ITEM_SIZE>(ruleData) = itemSize;
+	get<LAST_MODIFIED>(ruleData) = lastModified;
 	get<ITEM_DATA>(ruleData) = move(itemData);
 	get<SHA256_HASH>(ruleData) = move(sha256Hash);
-	get<RULE_UPDATED>(ruleData) = true;
+	get<MOD_STATUS>(ruleData) = ModificationType::UPDATED;
 
 	SecPolicy::updatedRules++;
 }
@@ -219,7 +222,7 @@ void HashRule::EnumFileVersion(const string &fileName)
 	LPCTSTR szVersionFile = fileName.c_str();
 	DWORD  verHandle = 0;
 	UINT   size = 0;
-	LPBYTE lpBuffer = NULL;
+	LPBYTE lpBuffer = nullptr;
 	DWORD  verSize = GetFileVersionInfoSize(szVersionFile, &verHandle);
 
 	if (verSize != NULL)
@@ -228,7 +231,7 @@ void HashRule::EnumFileVersion(const string &fileName)
 
 		if (GetFileVersionInfo(szVersionFile, verHandle, verSize, verData))
 		{
-			if (VerQueryValue(verData, TEXT("\\"), (VOID FAR* FAR*)&lpBuffer, &size))
+			if (VerQueryValue(verData, "\\", (VOID FAR* FAR*)&lpBuffer, &size))
 			{
 				if (size)
 				{
@@ -265,20 +268,20 @@ void HashRule::EnumFriendlyName(const string &fileName)
 	
 	LPCTSTR szFile = fileName.c_str();
 	DWORD dwLen, dwUseless;
-	LPTSTR lpVI = NULL;
-	WORD* langInfo = NULL;
-	PUINT cbLang = 0;
+	LPTSTR lpVI = nullptr;
+	WORD* langInfo = nullptr;
+	PUINT cbLang = nullptr;
 	bool validLang = true;
 
 	dwLen = GetFileVersionInfoSize(szFile, &dwUseless);
 	if (dwLen != 0)
 	{
-		lpVI = (LPTSTR)GlobalAlloc(GPTR, dwLen);
+		lpVI = static_cast<LPTSTR>(GlobalAlloc(GPTR, dwLen));
 		if (lpVI)
 		{
 			GetFileVersionInfo((LPTSTR)szFile, NULL, dwLen, lpVI);
 
-			validLang = VerQueryValue(lpVI, TEXT("\\VarFileInfo\\Translation"),
+			validLang = VerQueryValue(lpVI, "\\VarFileInfo\\Translation",
 				(LPVOID*)&langInfo, cbLang);
 		}
 	}
@@ -287,23 +290,24 @@ void HashRule::EnumFriendlyName(const string &fileName)
 	{
 		//get size on disk
 		string originalName = fileName.substr(
-			fileName.rfind("\\") + 1,
+			fileName.rfind('\\') + 1,
 			fileName.length());
 		int sizeOnDisk = (4096 * ((itemSize + 4096 - 1) / 4096)) / 1024;
 		
 		WIN32_FIND_DATA data;
-		HANDLE h = FindFirstFile(fileName.c_str(), &data);
+		HANDLE fileHandle = FindFirstFile(fileName.c_str(), &data);
+		FindClose(fileHandle);
 		
 		//get last write time in the local time zone
 		SYSTEMTIME sysTimeUTC, sysTimeLocal;
 		FileTimeToSystemTime(&data.ftLastWriteTime, &sysTimeUTC);
-		SystemTimeToTzSpecificLocalTime(NULL, &sysTimeUTC, &sysTimeLocal);
-		string lastModified = to_string(sysTimeLocal.wMonth) + "/"
+		SystemTimeToTzSpecificLocalTime(nullptr, &sysTimeUTC, &sysTimeLocal);
+		string timeStamp = to_string(sysTimeLocal.wMonth) + "/"
 			+ to_string(sysTimeLocal.wDay) + "/" + to_string(sysTimeLocal.wYear)
 			+ " " + to_string(sysTimeLocal.wHour) + ":"
 			+ to_string(sysTimeLocal.wMinute) + ":" + to_string(sysTimeLocal.wSecond);
 
-		friendlyName = originalName + to_string(sizeOnDisk) + "  KB" + lastModified;
+		friendlyName = originalName + to_string(sizeOnDisk) + "  KB" + timeStamp;
 	}
 	else
 	{
@@ -311,7 +315,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 			
 		TCHAR tszVerStrName[128];
 		LPVOID lpt;
-		PUINT cbBufSize = 0;
+		PUINT cbBufSize = nullptr;
 		string temp[6];
 
 		for (int i = 0; i < 5; i++)
@@ -326,7 +330,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 				temp[i] = (LPTSTR)lpt;
 			//if the file is missing certain metadata, skip it
 			else
-				temp[i] = "";
+				temp[i].clear();
 		}
 
 		//format FriendlyName
@@ -346,7 +350,7 @@ inline void HashRule::EnumCreationTime()
 	GetSystemTimeAsFileTime(&currTime);
 
 	lastModified = currTime.dwLowDateTime |
-		(long long)currTime.dwHighDateTime << 32;
+		currTime.dwHighDateTime << 32;
 }
 
 void HashRule::HashDigests(const string &fileName)
@@ -410,13 +414,13 @@ inline bool HashRule::MakeGUID()
 		char szGuidA[40] = { 0 };
 
 		StringFromGUID2(rGUID, szGuidW, 40);
-		WideCharToMultiByte(CP_ACP, 0, szGuidW, -1, szGuidA, 40, NULL, NULL);
+		WideCharToMultiByte(CP_ACP, 0, szGuidW, -1, szGuidA, 40, nullptr, nullptr);
 		
 		guid = szGuidA;
-		for (int i = 0; i < guid.length(); i++)
+		for (auto &GUIDchar : guid)
 		{
-			if (isalpha(guid[i]))
-				guid[i] = tolower(guid[i]);
+			if (isalpha(GUIDchar))
+				GUIDchar = tolower(GUIDchar);
 		}
 
 		result = true;

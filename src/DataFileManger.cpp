@@ -1,6 +1,7 @@
-#include "AppSecPolicy.hpp"
+// This is an open source non-commercial project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
 #include "DataFileManger.hpp"
-#include "ProtectedPtr.hpp"
 #include "include\WinReg.hpp"
 #include "Windows.h"
 
@@ -9,19 +10,13 @@
 #include "include\Crypto++\osrng.h"
 #include "include\Crypto++\files.h"
 #include "include\Crypto++\sha.h"
-#include "include\Crypto++\aes.h"
 #include "include\Crypto++\gcm.h"
 #include "include\Crypto++\hex.h"
 
-#include <filesystem>
 #include <algorithm>
 #include <exception>
 #include <iostream>
 #include <sstream>
-#include <utility>
-#include <vector>
-#include <thread>
-#include <string>
 
 using namespace std;
 using namespace CryptoPP;
@@ -50,7 +45,7 @@ bool DataFileManager::OpenPolicyFile()
 		goodOpen = false;
 
 	else
-		if (adf.GetLastResult() != true)
+		if (!adf.GetLastResult())
 		{
 			goodOpen = false;
 			cerr << "File modified!" << endl;
@@ -64,10 +59,10 @@ bool DataFileManager::OpenPolicyFile()
 			policyFileName.c_str(),
 			GENERIC_READ | GENERIC_WRITE,
 			NULL,
-			NULL,
+			nullptr,
 			OPEN_EXISTING,
 			FILE_ATTRIBUTE_NORMAL,
-			NULL);
+			nullptr);
 
 		*policyData = temp;
 		temp.clear();
@@ -156,12 +151,23 @@ string DataFileManager::GetCurrentPolicySettings() const
 
 	try
 	{
-		string policySettings = "";
+		string policySettings;
 		RegKey policyKey(
 			HKEY_LOCAL_MACHINE,
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
-			KEY_READ);
+			KEY_READ | KEY_WRITE);
 		
+		auto values = policyKey.EnumValues();
+
+		if (values.size() < 5)
+		{
+			policyKey.SetDwordValue("AuthenticodeEnabled", 0);
+			policyKey.SetDwordValue("DefaultLevel", 262144);
+			policyKey.SetMultiStringValue("ExecutableTypes", executableTypes);
+			policyKey.SetDwordValue("PolicyScope", 0);
+			policyKey.SetDwordValue("TransparentEnabled", 1);
+		}
+
 		policySettings += to_string(policyKey.GetDwordValue("AuthenticodeEnabled"));
 		policySettings += "|";
 		
@@ -203,7 +209,7 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
 
-	if (rulePaths.size() == 0)
+	if (rulePaths.empty())
 		return result;
 	
 	auto iterator = lower_bound(rulePaths.begin(), rulePaths.end(), path);
@@ -244,12 +250,12 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
 
-	if (userRulePaths.size() == 0)
+	if (userRulePaths.empty())
 		return result;
 
 	vector<string>::const_iterator foundRule;
 
-	auto foundRule1 = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
+	auto subDirSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
 		[&path](string const& str1, string const& str2)
 		{
 			// compare UP TO the length of the prefix and no farther
@@ -261,17 +267,16 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 			return false;
 		});
 
-	if (foundRule1 != userRulePaths.end() && !(path < *foundRule1))
+	if (subDirSearchResult != userRulePaths.end() && !(path < *subDirSearchResult))
 	{
-		if (*foundRule1 != path)
+		if (*subDirSearchResult != path)
 		{
 			nonExistingSubdir = true;
-			result = RuleFindResult::NO_EXIST_SUBDIR_SAME_OP;
 			parentOp = static_cast<SecOption>(
-				userRuleInfo[distance(userRulePaths.begin(), foundRule1)][SEC_OPTION] - '0');
+				userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
 		}
 
-		foundRule = foundRule1;
+		foundRule = subDirSearchResult;
 		validRule = true;
 	}
 
@@ -279,16 +284,17 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	{
 		bool existingSubdir = false;
 
-		auto foundRule2 = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
+		auto exactSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
 
-		if (foundRule2 != userRulePaths.end() && !(path < *foundRule2))
+		if (exactSearchResult != userRulePaths.end() && !(path < *exactSearchResult))
 		{
-			if (foundRule1 != foundRule2)
+			if (subDirSearchResult != exactSearchResult)
 			{
-				foundRule = foundRule2;
+				foundRule = exactSearchResult;
 				existingSubdir = true;
-				nonExistingSubdir = false;
 			}
+
+			nonExistingSubdir = false;
 		}
 
 		index = distance(userRulePaths.begin(), foundRule);
@@ -296,62 +302,79 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 		string foundRuleInfo = userRuleInfo[index];
 
 		option = static_cast<SecOption>(
-			(int)(foundRuleInfo[SEC_OPTION_POS] - '0'));
+			foundRuleInfo[SEC_OPTION_POS] - '0');
 
 		type = static_cast<RuleType>(
-			(int)(foundRuleInfo[RULE_TYPE_POS] - '0'));
+			foundRuleInfo[RULE_TYPE_POS] - '0');
 
 		if (option == SecOption::REMOVED)
-			result = RuleFindResult::NO_MATCH;
-
-		else if (nonExistingSubdir)
 		{
-			if (findOp != option)
-				result = RuleFindResult::NO_EXIST_SUBDIR_DIFF_SEC_OP;
+			if (existingSubdir)
+				result = RuleFindResult::RM_SUBDIR;
 
 			else
-				result = RuleFindResult::NO_EXIST_SUBDIR_SAME_OP;
+				result = RuleFindResult::REMOVED;
 		}
+		
+		else if (findOp != option)
+		{
+			if (nonExistingSubdir)
+			{
+				if (findOp == SecOption::REMOVED)
+					result = RuleFindResult::NO_EXIST_SUBDIR_TO_BE_RM;
+
+				else
+					result = RuleFindResult::NO_EXIST_SUBDIR_DIFF_OP;
+			}
+
+			else if (existingSubdir)
+			{
+				if (findOp == SecOption::REMOVED)
+					result = RuleFindResult::EXIST_SUBDIR_TO_BE_RM;
+
+				else
+					result = RuleFindResult::EXIST_SUBDIR_DIFF_OP;
+			}
+
+			else
+				result = RuleFindResult::DIFF_SEC_OP;
+		}
+			
+		else if (findType != type)
+			result = RuleFindResult::DIFF_TYPE;
+
+		else if (findOp != option && findType != type)
+			result = RuleFindResult::DIFF_OP_AND_TYPE;
 
 		else
 		{
-			if (findOp != option && findType != type)
-				result = RuleFindResult::DIFF_OP_AND_TYPE;
+			if (nonExistingSubdir)
+				result = RuleFindResult::NO_EXIST_SUBDIR_SAME_OP;
 
-			else if (findOp != option)
-			{
-				if (existingSubdir)
-				{
-					result = RuleFindResult::EXIST_SUBDIR_DIFF_OP;
-
-					if (parentOp != option)
-						parentDirDiffOp = true;
-				}
-
-				else
-					result = RuleFindResult::DIFF_SEC_OP;
-			}
-			
-			else if (findType != type)
-				result = RuleFindResult::DIFF_TYPE;
+			else if (existingSubdir)
+				result = RuleFindResult::EXIST_SUBDIR_SAME_OP;
 
 			else
-			{
-				if (existingSubdir)
-					result = RuleFindResult::EXIST_SUBDIR_SAME_OP;
+				result = RuleFindResult::EXACT_MATCH;
+		}
 
-				else
-					result = RuleFindResult::EXACT_MATCH;
-			}
+		if (nonExistingSubdir || existingSubdir)
+		{
+			if (option == SecOption::REMOVED && parentOp != findOp)
+				parentDirDiffOp = true;
+
+			else if (parentOp != option)
+				parentDirDiffOp = true;
 		}
 	}
 
 	return result;
 }
 
-bool DataFileManager::FindRulesInDir(const string &path, vector<RuleData> &rulesInDir) const
+vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
 {
-	bool rulesExist = false;
+	vector<RuleData> rulesInDir;
+
 	auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), path);
 
 	auto removedRulesEnd = upper_bound(removedRulesBegin, rulePaths.end(), path,
@@ -373,13 +396,12 @@ bool DataFileManager::FindRulesInDir(const string &path, vector<RuleData> &rules
 			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesBegin),
 			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesEnd));
 
+		rulesInDir.reserve(distance(removedRulesBegin, removedRulesEnd));
 		for (auto it = ruleInfoRange.first; it != ruleInfoRange.second; ++it)
 			rulesInDir.emplace_back(move(StringToRuleData(*it)));
-
-		rulesExist = true;
 	}
 
-	return rulesExist;
+	return rulesInDir;
 }
 
 RuleData DataFileManager::StringToRuleData(const string& ruleStr) const
@@ -416,8 +438,8 @@ RuleData DataFileManager::StringToRuleData(const string& ruleStr) const
 	StringSource(temp, true,
 		new HexDecoder(new StringSink(hash)));
 
-	for (int i = 0; i < hash.size(); i++)
-		get<ITEM_DATA>(ruleData).emplace_back(hash[i]);
+	for (const auto &MD5byte : hash)
+		get<ITEM_DATA>(ruleData).emplace_back(MD5byte);
 
 	hash.clear();
 	getline(iss, temp, '|');
@@ -425,10 +447,8 @@ RuleData DataFileManager::StringToRuleData(const string& ruleStr) const
 	StringSource(temp, true,
 		new HexDecoder(new StringSink(hash)));
 
-	for (int i = 0; i < hash.size(); i++)
-		get<SHA256_HASH>(ruleData).emplace_back(hash[i]);
-
-	get<RULE_UPDATED>(ruleData) = false;
+	for (const auto &SHAbyte : hash)
+		get<SHA256_HASH>(ruleData).emplace_back(SHAbyte);
 
 	return ruleData;
 }
@@ -436,7 +456,7 @@ RuleData DataFileManager::StringToRuleData(const string& ruleStr) const
 string DataFileManager::RuleDataToString(const RuleData& ruleData) const
 {
 	auto hashToStr =
-		[](const vector<BYTE>& hash)
+		[](const auto& hash)
 		{
 			string hashStr;
 			string hexStr;
@@ -502,9 +522,49 @@ void DataFileManager::SortRules()
 	}
 }
 
+vector<RuleData> DataFileManager::GetDeletedFiles(const vector<RuleData>& ruleData)
+{
+	vector<RuleData> processedRules;
+	vector<RuleData> currentRules;
+	vector<RuleData> deletedFiles;
+
+	processedRules.reserve(ruleData.size());
+	for (const auto &rule : ruleData)
+		processedRules.emplace_back(rule);
+
+	for (const auto &rule : updatedRules)
+	{
+		auto temp = move(FindRulesInDir(rule));
+		currentRules.insert(currentRules.begin(),
+			temp.begin(), temp.end());
+	}
+
+	sort(currentRules.begin(), currentRules.end(),
+		[](const RuleData &lhs, const RuleData &rhs)
+		{
+			return get<FILE_LOCATION>(lhs) < get<FILE_LOCATION>(rhs);
+		});
+
+	sort(processedRules.begin(), processedRules.end(),
+		[](const RuleData &lhs, const RuleData &rhs)
+		{
+			return get<FILE_LOCATION>(lhs) < get<FILE_LOCATION>(rhs);
+		});
+
+	set_difference(
+		currentRules.begin(), currentRules.end(),
+		processedRules.begin(), processedRules.end(),
+		back_inserter(deletedFiles),
+		[](const RuleData &lhs, const RuleData &rhs)
+		{
+			return get<FILE_LOCATION>(lhs) < get<FILE_LOCATION>(rhs);
+		});
+
+	return deletedFiles;
+}
+
 void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool rulesRemoved)
 {
-	
 	SecOption option;
 	RuleType type;
 	string location;
@@ -534,40 +594,33 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 			userRulesNotSorted = true;
 		}
 
-		else if (result == RuleFindResult::EXIST_SUBDIR_DIFF_OP && !rulesRemoved)
+		else if (result != RuleFindResult::NO_MATCH
+			&& result != RuleFindResult::RM_SUBDIR
+			&& result != RuleFindResult::REMOVED
+			&& rulesRemoved)
 		{
-			switchedRules.emplace_back(location);
+			removedRules.emplace_back(location);
 
-			if (parentDiffOp)
-				userRuleInfo.erase(userRuleInfo.begin() + index);
-		}
-
-		else if (result != RuleFindResult::NO_MATCH && rulesRemoved)
-		{
-			if (result == RuleFindResult::EXIST_SUBDIR_SAME_OP
-				|| result == RuleFindResult::EXIST_SUBDIR_DIFF_OP)
+			if (result == RuleFindResult::NO_EXIST_SUBDIR_TO_BE_RM)
 			{
-				rulesNotSorted = true;
+				userRulesNotSorted = true;
 
-				removedRules.emplace_back(location);
 				userRuleInfo.emplace_back(
 					to_string(static_cast<int>(SecOption::REMOVED))
 					+ '|' + to_string(static_cast<int>(type))
 					+ '|' + location);
-
-				userRulesNotSorted = true;
 			}
 
+			else if (result == RuleFindResult::EXIST_SUBDIR_TO_BE_RM)
+				userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+				
 			else
-			{
-				removedRules.emplace_back(userRulePaths[index]);
 				userRuleInfo.erase(userRuleInfo.begin() + index);
-			}
 		}
 
-		else if (result == RuleFindResult::NO_EXIST_SUBDIR_DIFF_SEC_OP)
+		else if (result == RuleFindResult::NO_EXIST_SUBDIR_DIFF_OP)
 		{
-			switchedRules.emplace_back(location);
+			updatedRules.emplace_back(location);
 			userRuleInfo.emplace_back(to_string(static_cast<int>(option))
 				+ '|' + to_string(static_cast<int>(type))
 				+ '|' + location);
@@ -575,19 +628,45 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 			userRulesNotSorted = true;
 		}
 
+		else if (result == RuleFindResult::EXIST_SUBDIR_DIFF_OP)
+		{
+			updatedRules.emplace_back(location);
+
+			if (parentDiffOp)
+				userRuleInfo.erase(userRuleInfo.begin() + index);
+
+			else
+				userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+		}
+
 		else if (result == RuleFindResult::DIFF_SEC_OP)
 		{
-			switchedRules.emplace_back(location);
+			updatedRules.emplace_back(location);
 			userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
 		}
+
+		else if (result == RuleFindResult::RM_SUBDIR)
+		{
+			if (parentDiffOp)
+				userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+
+			else 
+				userRuleInfo.erase(userRuleInfo.begin() + index);
+		}
+
+		else if (result == RuleFindResult::REMOVED)
+			userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+
+		else 
+			updatedRules.emplace_back(location);
 	}
 }
 
-void DataFileManager::InsertNewEntries(const vector<shared_ptr<RuleData>>& ruleData)
+void DataFileManager::InsertNewEntries(const vector<RuleDataPtr>& ruleData)
 {
 	try
 	{
-		if (ruleData.size())
+		if (!ruleData.empty())
 			rulesAdded = true;
 
 		for (const auto& rule : ruleData)
@@ -595,8 +674,6 @@ void DataFileManager::InsertNewEntries(const vector<shared_ptr<RuleData>>& ruleD
 			rulePaths.emplace_back(get<FILE_LOCATION>(*rule));
 			ruleInfo.emplace_back(move(RuleDataToString(*rule)));
 		}
-
-		ReorganizePolicyData();
 	}
 	catch (const exception &e)
 	{
@@ -604,39 +681,8 @@ void DataFileManager::InsertNewEntries(const vector<shared_ptr<RuleData>>& ruleD
 	}
 }
 
-void DataFileManager::SwitchEntries(SecOption option)
-{
-	SortRules();
-
-	for (const auto& rule : switchedRules)
-	{
-		auto switchedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), rule);
-
-		auto switchedRulesEnd = upper_bound(switchedRulesBegin, rulePaths.end(), rule,
-			[&rule](string const& str1, string const& str2)
-			{
-				// compare UP TO the length of the prefix and no farther
-				if (auto cmp = strncmp(str1.data(), str2.data(), rule.size()))
-					return cmp < 0;
-
-				// The strings are equal to the length of the prefix so
-				// behave as if they are equal. That means s1 < s2 == false
-				return false;
-			});
-
-		auto ruleInfoRange = make_pair(
-			ruleInfo.begin() + distance(rulePaths.begin(), switchedRulesBegin),
-			ruleInfo.begin() + distance(rulePaths.begin(), switchedRulesEnd));
-
-		for (auto it = ruleInfoRange.first; it != ruleInfoRange.second; ++it)
-			it->at(SEC_OPTION) = static_cast<char>(option) + '0';
-	}
-
-	ReorganizePolicyData();
-}
-
 void DataFileManager::UpdateEntries(SecOption option,
-	const vector<shared_ptr<RuleData>>& ruleData)
+	const vector<RuleDataPtr>& ruleData)
 {
 	SortRules();
 
@@ -647,10 +693,10 @@ void DataFileManager::UpdateEntries(SecOption option,
 
 		if (iterator != rulePaths.end() && !(get<FILE_LOCATION>(*updatedRule) < *iterator))
 		{
-			if (get<RULE_UPDATED>(*updatedRule) == true)
+			if (get<MOD_STATUS>(*updatedRule) == ModificationType::UPDATED)
 				ruleInfo[distance(rulePaths.begin(), iterator)] = move(RuleDataToString(*updatedRule));
 
-			else
+			else if (get<MOD_STATUS>(*updatedRule) == ModificationType::SWITCHED)
 				ruleInfo[distance(rulePaths.begin(), iterator)][SEC_OPTION] = static_cast<char>(option) + '0';
 		}
 
@@ -659,11 +705,26 @@ void DataFileManager::UpdateEntries(SecOption option,
 	}
 }
 
+void DataFileManager::RemoveDeletedFiles(const vector<RuleData> &deletedFiles)
+{
+	SortRules();
+	
+	for (const auto &deletedFile : deletedFiles)
+	{
+		auto foundRule = lower_bound(rulePaths.begin(), rulePaths.end(),
+			get<FILE_LOCATION>(deletedFile));
+
+		auto removedIndex = distance(rulePaths.begin(), foundRule);
+		rulePaths.erase(foundRule);
+		ruleInfo.erase(ruleInfo.begin() + removedIndex);
+	}
+}
+
 void DataFileManager::RemoveOldEntries()
 {
 	SortRules();
 
-	for (const auto& rule : removedRules)
+	for (const auto &rule : removedRules)
 	{
 		auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), rule);
 
@@ -686,11 +747,9 @@ void DataFileManager::RemoveOldEntries()
 		rulePaths.erase(removedRulesBegin, removedRulesEnd);
 		ruleInfo.erase(ruleInfoRange.first, ruleInfoRange.second);
 	}
-
-	ReorganizePolicyData();
 }
 
-void DataFileManager::ReorganizePolicyData()
+void DataFileManager::WriteChanges()
 {
 	if (userRulesNotSorted)
 		sort(userRuleInfo.begin(), userRuleInfo.end(),
@@ -740,7 +799,7 @@ void DataFileManager::CheckPassword(string& guessPwd)
 	bool validPwd;
 	bool cmdPwd = true;
 
-	if (guessPwd.size() == 0)
+	if (guessPwd.empty())
 		cmdPwd = false;
 	
 	//get salt from beginning of file
@@ -860,30 +919,34 @@ void DataFileManager::GetPassword(string &password)
 
 void DataFileManager::ListRules() const
 {
-	auto sortedRules = userRuleInfo;
-	sort(sortedRules.begin(), sortedRules.end(), 
-		[](const string &str1, const string &str2)
-	{
-		if (str1[SEC_OPTION] != str2[SEC_OPTION])
-			return str1[SEC_OPTION] > str2[SEC_OPTION];
-
-		fs::path path1(str1.substr(RULE_PATH_POS,
-			str1.length()));
-
-		fs::path path2(str2.substr(RULE_PATH_POS,
-			str2.length()));
-
-		if (path1.parent_path() != path2.parent_path())
-			return path1.parent_path() < path2.parent_path();
-
-		else 
-			return path1.filename() < path2.filename();
-	});
-
+	char removed = static_cast<char>(SecOption::REMOVED) + '0';
 	char whiteList = static_cast<char>(SecOption::WHITELIST) + '0';
 	char blackList = static_cast<char>(SecOption::BLACKLIST) + '0';
 
-	if (sortedRules.size() > 0)
+	auto sortedRules = userRuleInfo;
+	sort(sortedRules.begin(), sortedRules.end(), 
+		[&removed](const string &str1, const string &str2)
+		{
+			if ((str1[SEC_OPTION] != removed && str2[SEC_OPTION] != removed)
+				&& (str1[SEC_OPTION] != str2[SEC_OPTION]))
+				return str1[SEC_OPTION] > str2[SEC_OPTION];
+
+			fs::path path1(str1.substr(RULE_PATH_POS,
+				str1.length()));
+
+			fs::path path2(str2.substr(RULE_PATH_POS,
+				str2.length()));
+
+			if (path1.parent_path() != path2.parent_path())
+				return path1.parent_path() < path2.parent_path();
+
+			else 
+				return path1.filename() < path2.filename();
+		});
+
+	
+
+	if (!sortedRules.empty())
 	{
 		unsigned index = 0;
 
@@ -893,11 +956,13 @@ void DataFileManager::ListRules() const
 			for (index; index < sortedRules.size(); index++)
 			{
 				if (sortedRules[index][SEC_OPTION] == whiteList)
-				{
 					cout << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length())
-						<< "\n";
-				}
+						sortedRules[index].length()) << endl;
+
+				else if (sortedRules[index][SEC_OPTION] == removed)
+					cout << "Except: " << sortedRules[index].substr(RULE_PATH_POS,
+						sortedRules[index].length()) << endl;
+
 				else
 					break;
 			}
@@ -911,11 +976,13 @@ void DataFileManager::ListRules() const
 			for (index; index < sortedRules.size(); index++)
 			{
 				if (sortedRules[index][SEC_OPTION] == blackList)
-				{
 					cout << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length())
-						<< "\n";
-				}
+						sortedRules[index].length()) << endl;
+
+				else if (sortedRules[index][SEC_OPTION] == removed)
+					cout << "Except: " << sortedRules[index].substr(RULE_PATH_POS,
+						sortedRules[index].length()) << endl;
+
 				else
 					break;
 			}

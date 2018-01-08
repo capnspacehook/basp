@@ -1,10 +1,16 @@
+#include <filesystem>
+#include <utility>
 #include <string>
 #include <vector>
+#include <memory>
 #include <tuple>
 #pragma once
 
+namespace fs = std::experimental::filesystem;
+
 namespace AppSecPolicy
 {
+	//RuleData and UserRule access names
 	const int SEC_OPTION = 0;
 	const int RULE_TYPE = 1;
 	const int FILE_LOCATION = 2;
@@ -14,7 +20,16 @@ namespace AppSecPolicy
 	const int LAST_MODIFIED = 6;
 	const int ITEM_DATA = 7;
 	const int SHA256_HASH = 8;
-	const int RULE_UPDATED = 9;
+	const int MOD_STATUS = 9;
+
+	const int RULE_PATH = 0;
+	const int EXTENSION = 1;
+	const int DATA_SIZE = 2;
+
+	//RuleAction access names
+	const int MOD_TYPE = 0;
+	const int FILE_SIZE = 1;
+	const int RULE_DATA = 2;
 
 	const int AUTHENTICODE_ENABLED = 0;
 	const int DEFAULT_LEVEL = 2;
@@ -23,14 +38,26 @@ namespace AppSecPolicy
 
 	enum class SecOption { BLACKLIST, WHITELIST, REMOVED };
 	enum class RuleType { HASHRULE, PATHRULE };
-	enum class WriteType { CREATED_RULES, SWITCHED_RULES };
+	enum class ModificationType { CREATED, SWITCHED, UPDATED, SKIPPED, REMOVED };
 	enum class RuleFindResult { EXACT_MATCH, DIFF_SEC_OP, DIFF_TYPE, 
-		DIFF_OP_AND_TYPE, NO_EXIST_SUBDIR_SAME_OP, NO_EXIST_SUBDIR_DIFF_SEC_OP, 
-		EXIST_SUBDIR_SAME_OP, EXIST_SUBDIR_DIFF_OP, NO_MATCH };
+		DIFF_OP_AND_TYPE,  EXIST_SUBDIR_SAME_OP, EXIST_SUBDIR_DIFF_OP, 
+		EXIST_SUBDIR_TO_BE_RM, NO_EXIST_SUBDIR_SAME_OP, 
+		NO_EXIST_SUBDIR_DIFF_OP, NO_EXIST_SUBDIR_TO_BE_RM,
+		RM_SUBDIR, REMOVED, NO_MATCH };
 
-	typedef std::tuple<SecOption, RuleType, std::string> UserRule;
+	using UserRule = std::tuple<SecOption, RuleType, std::string>;
 
-	typedef std::tuple<SecOption, RuleType, std::string, std::string, 
-		std::string, uintmax_t, uintmax_t, std::vector<unsigned char>, 
-		std::vector<unsigned char>, bool> RuleData;
+	using RuleData = std::tuple<SecOption, RuleType, std::string, 
+		std::string, std::string, uintmax_t, uintmax_t, 
+		std::vector<unsigned char>, std::vector<unsigned char>, 
+		ModificationType>;
+
+	using DirInfo = std::pair<fs::path, uintmax_t>;
+
+	using FileInfo = std::tuple<std::string, std::string, uintmax_t>;
+
+	using RuleDataPtr = std::shared_ptr<RuleData>;
+
+	using RuleAction = std::tuple<ModificationType, uintmax_t,
+		RuleDataPtr>;
 }

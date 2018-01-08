@@ -1,22 +1,22 @@
-#include "AppSecPolicy.hpp"
+// This is an open source non-commercial project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
+#include "RuleProducer.hpp"
+#include "RuleConsumer.hpp"
 #include "SecPolicy.hpp"
 #include "HashRule.hpp"
 #include "Windows.h"
 
 #include "include\WinReg.hpp"
 
-#include <filesystem>
 #include <exception>
 #include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <memory>
-#include <chrono>
-#include <thread>
-#include <string>
-#include <vector>
 
 using namespace std;
+using namespace moodycamel;
 using namespace AppSecPolicy;
 namespace fs = std::experimental::filesystem;
 
@@ -25,6 +25,13 @@ atomic_uintmax_t SecPolicy::switchedRules = 0;
 atomic_uintmax_t SecPolicy::updatedRules = 0;
 atomic_uintmax_t SecPolicy::skippedRules = 0;
 atomic_uintmax_t SecPolicy::removedRules = 0;
+
+atomic_uint SecPolicy::doneProducers = 0;
+atomic_uint SecPolicy::doneConsumers = 0;
+atomic_bool SecPolicy::fileCheckingNotDone = true;
+ConcurrentQueue<DirInfo> SecPolicy::dirItQueue;
+ConcurrentQueue<FileInfo> SecPolicy::fileCheckQueue;
+ConcurrentQueue<RuleAction> SecPolicy::ruleQueue;
 
 //create hash rules recursively in 'path'
 void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
@@ -130,12 +137,12 @@ void SecPolicy::TempRun(const string &path)
 			si.cb = sizeof(si);
 			bool procCreated = CreateProcess(
 				(char*)file.string().c_str(),
-				NULL,
-				NULL,
-				NULL,
+				nullptr,
+				nullptr,
+				nullptr,
 				FALSE,
 				NULL,
-				NULL,
+				nullptr,
 				(char*)file.parent_path().string().c_str(),
 				&si,
 				&pi);
@@ -200,11 +207,6 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 		tempRuleCreation = true;
 		CreatePolicy(dir, SecOption::WHITELIST);
 
-		//wait for hash creation threads to finish before trying 
-		//to delete the rules they may or may not be finished
-		for (auto &t : threads)
-			t.join();
-
 		ApplyChanges(false);
 
 		cout << ". Executing " << exeFile.string() << " now...\n\n";
@@ -219,12 +221,12 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 		si.cb = sizeof(si);
 		bool procCreated = CreateProcess(
 			exeFile.string().c_str(),
-			NULL,
-			NULL,
-			NULL,
+			nullptr,
+			nullptr,
+			nullptr,
 			FALSE,
 			NULL,
-			NULL,
+			nullptr,
 			exeFile.parent_path().string().c_str(),
 			&si,
 			&pi);
@@ -243,30 +245,22 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 		cout << "Reverting temporary changes...";
 
 		//delete temporary rules in parallel
-		threads.clear();
 		for (const auto &tempRuleID : createdRulesData)
-		{
-			removedRules++;
-			threads.emplace_back(
-				&HashRule::RemoveRule,
-				HashRule(),
-				get<RULE_GUID>(*tempRuleID),
-				SecOption::WHITELIST);
-		}
+			ruleQueue.enqueue(move(make_tuple(
+				ModificationType::REMOVED, 0ULL, tempRuleID)));
 
-		for (auto &t : threads)
-			t.join();
-
-		threads.clear();
 		for (const auto &tempRule : updatedRulesData)
-		{
-			switchedRules++;
-			threads.emplace_back(
-				&HashRule::SwitchRule,
-				HashRule(),
-				get<ITEM_SIZE>(*tempRule),
-				tempRule);
-		}
+			ruleQueue.enqueue(move(make_tuple(
+				ModificationType::SWITCHED, 0ULL, tempRule)));
+
+		ruleConsumers.clear();
+		for (int i = 0; i < maxThreads; i++)
+			ruleConsumers.emplace_back(
+				&RuleConsumer::ConsumeRules,
+				RuleConsumer());
+
+		for (auto &t : ruleConsumers)
+			t.join();
 
 		cout << "done" << endl;
 
@@ -297,11 +291,15 @@ void SecPolicy::RemoveRules(const string &path)
 
 	ruleRemoval = true;
 	enteredRules.emplace_back(
-		secOption, ruleType, lowerPath);
-	DeleteRules(path);
+		SecOption::REMOVED, ruleType, lowerPath);
+
+	vector<string> paths;
+	paths.emplace_back(lowerPath);
+
+	DeleteRules(paths);
 }
 
-void SecPolicy::RemoveRules(const vector<string> &paths)
+void SecPolicy::RemoveRules(vector<string> &paths)
 {
 	dataFileMan.VerifyPassword(passwordGuess);
 	CheckGlobalSettings();
@@ -310,15 +308,19 @@ void SecPolicy::RemoveRules(const vector<string> &paths)
 	string lowerPath;
 
 	ruleRemoval = true;
-	for (const auto &path : paths)
+	for (auto &path : paths)
 	{
 		transform(path.begin(), path.end(),
 			back_inserter(lowerPath), tolower);
 
+		path = lowerPath;
+
 		enteredRules.emplace_back(
-			secOption, ruleType, lowerPath);
-		DeleteRules(lowerPath);
+			SecOption::REMOVED, ruleType, lowerPath);
+		
 	}
+
+	DeleteRules(paths);
 }
 
 void SecPolicy::EnumLoadedDLLs(const string &exeFile)
@@ -334,10 +336,10 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 	// Create target process
 	si.cb = sizeof(si);
 	bool procCreated = CreateProcess(
-		NULL,
+		nullptr,
 		(char*)exeFile.c_str(),
-		NULL,
-		NULL,
+		nullptr,
+		nullptr,
 		TRUE,
 		DEBUG_PROCESS,
 		NULL,
@@ -411,7 +413,7 @@ bool SecPolicy::SetPrivileges(const string& privName, bool enablePriv)
 	LUID luid;
 
 	if (!LookupPrivilegeValue(
-		NULL,            // lookup privilege on local system
+		nullptr,            // lookup privilege on local system
 		privName.c_str(),   // privilege to lookup 
 		&luid))        // receives LUID of privilege
 	{
@@ -433,8 +435,8 @@ bool SecPolicy::SetPrivileges(const string& privName, bool enablePriv)
 		FALSE,
 		&tp,
 		sizeof(TOKEN_PRIVILEGES),
-		(PTOKEN_PRIVILEGES)NULL,
-		(PDWORD)NULL))
+		(PTOKEN_PRIVILEGES)nullptr,
+		(PDWORD)nullptr))
 	{
 		cerr << "AdjustTokenPrivileges error: " << GetLastError() << endl;
 		return false;
@@ -547,7 +549,25 @@ void SecPolicy::EnumAttributes(const string &fileName)
 					<< initialFile.string() << "...";
 			}
 
-			EnumDirContents(initialFile, fileSize);
+			dirItQueue.enqueue(move(make_pair(initialFile, fileSize)));
+
+			for (int i = 0; i < initThreadCnt; i++)
+			{
+				if (i != 0)
+					Sleep(5);
+
+				ruleProducers.emplace_back(
+					&RuleProducer::ProduceRules,
+					RuleProducer());
+			}
+
+			ModifyRules();
+			for (auto &t : ruleProducers)
+				t.join();
+
+			for (auto &t : ruleConsumers)
+				t.join();
+
 			cout << "done" << endl;
 		}
 		else
@@ -561,7 +581,7 @@ void SecPolicy::EnumAttributes(const string &fileName)
 				cout << action << " "
 					<< initialFile.string();
 
-				CheckValidType(initialFile, fileSize);
+				//CheckValidType(initialFile, fileSize);
 				cout << "done" << endl;
 			}
 
@@ -584,96 +604,76 @@ void SecPolicy::EnumAttributes(const string &fileName)
 	}
 }
 
-//recursively go through directory 
-void SecPolicy::EnumDirContents(const fs::path& dir, uintmax_t &fileSize)
-{
-	try
-	{
-		for (const auto &currFile : fs::directory_iterator(dir))
-		{
-			if (fs::exists(currFile))
-			{
-				if (fs::is_directory(currFile))
-					EnumDirContents(currFile.path(), fileSize);
-				else
-				{
-					fileSize = fs::file_size(currFile);
-					if (fileSize && fs::is_regular_file(currFile))
-						CheckValidType(currFile, fileSize);
-				}
-			}
-		}
-	}
-	catch (const fs::filesystem_error &e)
-	{
-		cout << e.what() << endl;
-	}
-	catch (const exception &e)
-	{
-		cout << e.what() << endl;
-	}
-}
-
 //checks whether file is a valid type as detirmined by the list 
 //in the member variable executableTypes and if it is, start creating
 //a new hash rule for the file in a new thread
-void SecPolicy::CheckValidType(const fs::path &file, uintmax_t &fileSize)
+void SecPolicy::ModifyRules()
 {
 	try
 	{
-		if (file.has_extension())
+		string file;
+		bool filesLeft;
+		FileInfo fileInfo;
+		string extension;
+		RuleData ruleData;
+		uintmax_t fileSize;
+		ConsumerToken ruleCtok(fileCheckQueue);
+
+		do
 		{
-			//convert file name to just the extension
-			string extension = file.extension().string();
-			extension = extension.substr(1, extension.length());
-
-			transform(extension.begin(), extension.end(),
-				extension.begin(), toupper);
-
-			//check if the file is of one of the executable types 
-			if (binary_search(executableTypes.cbegin(),
-				executableTypes.cend(), extension))
+			filesLeft = doneProducers.load(memory_order_acquire) != initThreadCnt;
+			while (fileCheckQueue.try_dequeue(ruleCtok, fileInfo))
 			{
-				RuleData ruleData;
-				RuleFindResult result = dataFileMan.FindRule(
-					secOption, ruleType, file.string(), ruleData);
+				filesLeft = true;
+				file = move(get<RULE_PATH>(fileInfo));
+				extension = move(get<EXTENSION>(fileInfo));
+				fileSize = get<DATA_SIZE>(fileInfo);
 
-				if (result == RuleFindResult::NO_MATCH)
+				//check if the file is of one of the executable types 
+				if (binary_search(executableTypes.cbegin(),
+					executableTypes.cend(), extension))
 				{
-					get<SEC_OPTION>(ruleData) = secOption;
-					get<FILE_LOCATION>(ruleData) = file.string();
-					get<ITEM_SIZE>(ruleData) = fileSize;
-					get<RULE_UPDATED>(ruleData) = false;
-					createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
+					RuleFindResult result = dataFileMan.FindRule(
+						secOption, ruleType, file, ruleData);
 
-					threads.emplace_back(
-						&HashRule::CreateNewHashRule,
-						HashRule(),
-						createdRulesData.back());
-				}
-				else if (result == RuleFindResult::DIFF_SEC_OP)
-				{
-					updatedRulesData.emplace_back(make_shared<RuleData>(ruleData));
+					if (result == RuleFindResult::NO_MATCH)
+					{
+						get<SEC_OPTION>(ruleData) = secOption;
+						get<FILE_LOCATION>(ruleData) = file;
+						get<ITEM_SIZE>(ruleData) = fileSize;
+						createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
-					threads.emplace_back(
-						&HashRule::SwitchRule,
-						HashRule(),
-						fileSize,
-						updatedRulesData.back());
-				}
-				else if (result == RuleFindResult::EXACT_MATCH)
-				{
-					updatedRulesData.emplace_back(make_shared<RuleData>(ruleData));
+						ruleQueue.enqueue(
+							move(make_tuple(
+								ModificationType::CREATED, 0ULL, createdRulesData.back())));
+					}
+					else if (result == RuleFindResult::DIFF_SEC_OP)
+					{
+						updatedRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
-					threads.emplace_back(
-						&HashRule::CheckIfRuleOutdated,
-						HashRule(),
-						fileSize,
-						updatedRulesData.back(),
-						true);
+						ruleQueue.enqueue(
+							move(make_tuple(
+								ModificationType::SWITCHED, fileSize, updatedRulesData.back())));
+					}
+					else if (result == RuleFindResult::EXACT_MATCH)
+					{
+						updatedRulesData.emplace_back(make_shared<RuleData>(ruleData));
+
+						ruleQueue.enqueue(
+							move(make_tuple(
+								ModificationType::UPDATED, fileSize, updatedRulesData.back())));
+					}
+
+					if (ruleConsumers.size() < initThreadCnt
+						|| ruleConsumers.size() < initThreadCnt + doneProducers)
+						ruleConsumers.emplace_back(
+							&RuleConsumer::ConsumeRules,
+							RuleConsumer());
 				}
 			}
-		}
+		} while (filesLeft);
+
+		fileCheckingNotDone = false;
 	}
 	catch (const fs::filesystem_error &e)
 	{
@@ -685,42 +685,45 @@ void SecPolicy::CheckValidType(const fs::path &file, uintmax_t &fileSize)
 	}
 }
 
-void SecPolicy::DeleteRules(const fs::path &file)
+void SecPolicy::DeleteRules(const vector<string> &files)
 {
-	if (fs::is_directory(file))
+	for (const auto &file : files)
 	{
-		cout << "Removing rules of " << file.string() << "...";
-
-		vector<RuleData> rulesInDir;
-		bool foundRules = dataFileMan.FindRulesInDir(
-			file.string(), rulesInDir);
-
-		if (foundRules)
+		if (fs::is_directory(file))
 		{
-			for (const auto &rule : rulesInDir)
+			cout << "Removing rules of " << file << "...";
+
+			auto rulesInDir = move(dataFileMan.FindRulesInDir(file));
+
+			if (!rulesInDir.empty())
 			{
-				threads.emplace_back(
-					&HashRule::RemoveRule,
-					HashRule(),
-					get<RULE_GUID>(rule),
-					get<SEC_OPTION>(rule));
+				for (const auto &rule : rulesInDir)
+					ruleQueue.enqueue(move(make_tuple(
+						ModificationType::REMOVED, 0ULL, make_shared<RuleData>(rule))));
+			}
+		}
+
+		else if (fs::is_regular_file(file))
+		{
+			RuleData ruleData;
+			if (dataFileMan.FindRule(secOption, ruleType, file, ruleData)
+				!= RuleFindResult::NO_MATCH)
+			{
+				cout << "Removing rule for " << file << "...";
+
+				ruleQueue.enqueue(move(make_tuple(
+					ModificationType::REMOVED, 0ULL, make_shared<RuleData>(ruleData))));
 			}
 		}
 	}
 
-	else if (fs::is_regular_file(file))
-	{
-		RuleData ruleData;
-		if (dataFileMan.FindRule(secOption, ruleType, file.string(), ruleData)
-			!= RuleFindResult::NO_MATCH)
-		{
-			cout << "Removing rule for " << file << "...";
+	for (int i = 0; i < initThreadCnt; i++)
+		ruleConsumers.emplace_back(
+			&RuleConsumer::ConsumeRules,
+			RuleConsumer());
 
-			HashRule hashRule;
-			hashRule.RemoveRule(get<RULE_GUID>(ruleData),
-				get<SEC_OPTION>(ruleData));
-		}
-	}
+	for (auto &t : ruleConsumers)
+		t.join();
 
 	cout << "done\n";
 }
@@ -728,20 +731,25 @@ void SecPolicy::DeleteRules(const fs::path &file)
 //print how many rules were created and runtime of rule creation
 void SecPolicy::PrintStats() const
 {
-	common_type_t<chrono::nanoseconds,
-		chrono::nanoseconds> diff =
-		chrono::high_resolution_clock::now() - startTime;
+	using namespace chrono;
+
+	common_type_t<nanoseconds,
+		nanoseconds> diff =
+		high_resolution_clock::now() - startTime;
 
 	int secs;
-	int mins = chrono::duration<double, milli>(diff).count() / 60000;
+	int mins = duration<double, milli>(diff).count() / 60000;
 
 	if (mins > 0)
-		secs = (int)(chrono::duration<double, milli>(diff).count() / 1000) % (mins * 60);
+		secs = static_cast<int>(
+			duration<double, milli>(diff).count() / 1000) % (mins * 60);
+
 	else
-		secs = chrono::duration<double, milli>(diff).count() / 1000;
+		secs = duration<double, milli>(diff).count() / 1000;
 
 	cout << "Created " << createdRules << " rules,\n"
 		<< "Switched " << switchedRules << " rules,\n"
+		<< "Updated " << updatedRules << " rules,\n"
 		<< "Skipped " << skippedRules << " rules, and\n"
 		<< "Removed " << removedRules << " rules "
 		<< "in ";
@@ -766,7 +774,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 	{
 		cout << endl << "Applying changes...";
 
-		executableTypes.push_back("ABC");
+		executableTypes.emplace_back("ABC");
 		RegKey policySettings(
 			HKEY_LOCAL_MACHINE,
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
@@ -788,14 +796,50 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 			if (createdRules)
 				dataFileMan.InsertNewEntries(createdRulesData);
 
-			if (updatedRules)
+			if (updatedRules || switchedRules)
 				dataFileMan.UpdateEntries(secOption, updatedRulesData);
 
-			else if (switchedRules)
-				dataFileMan.SwitchEntries(secOption);
+			if (updatedRules || skippedRules)
+			{
+				auto totalRulesProcessed = 
+					[](const vector<RuleDataPtr> &vec1, const vector<RuleDataPtr> &vec2)
+					{
+						vector<RuleData> processedRules;
+						for (const auto& rule : vec1)
+							processedRules.emplace_back(*rule);
+
+						for (const auto& rule : vec2)
+							processedRules.emplace_back(*rule);
+
+						return processedRules;
+					};
+
+				auto deletedFiles = dataFileMan.GetDeletedFiles(
+					move(totalRulesProcessed(createdRulesData, updatedRulesData)));
+
+				if (!deletedFiles.empty())
+				{
+					ruleConsumers.clear();
+					for (const auto &rule : deletedFiles)
+						ruleQueue.enqueue(move(make_tuple(
+							ModificationType::REMOVED, 0ULL, make_shared<RuleData>(rule))));
+
+					for (int i = 0; i < maxThreads; i++)
+						ruleConsumers.emplace_back(
+							&RuleConsumer::ConsumeRules,
+							RuleConsumer());
+
+					dataFileMan.RemoveDeletedFiles(deletedFiles);
+
+					for (auto &t : ruleConsumers)
+						t.join();
+				}
+			}
 
 			if (removedRules)
 				dataFileMan.RemoveOldEntries();
+
+			dataFileMan.WriteChanges();
 		}
 
 		cout << "done\n\n";

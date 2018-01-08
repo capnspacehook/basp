@@ -1,11 +1,6 @@
 #include "AppSecPolicy.hpp"
 #include "ProtectedPtr.hpp"
 #include "include\Crypto++\aes.h"
-
-#include <filesystem>
-#include <string>
-#include <vector>
-#include <tuple>
 #pragma once
 
 using CryptoPP::AES;
@@ -23,7 +18,7 @@ namespace AppSecPolicy
 	class DataFileManager
 	{
 	public:
-		explicit DataFileManager()
+		DataFileManager()
 		{
 			kdfSalt.SetWipeOnExit(false);
 			kdfHash.SetWipeOnExit(false);
@@ -52,13 +47,15 @@ namespace AppSecPolicy
 		void SetNewPassword();
 		RuleFindResult FindRule(SecOption, RuleType,
 			const std::string&, RuleData&) const;
-		bool FindRulesInDir(const std::string&, std::vector<RuleData>&) const;
+		std::vector<RuleData> FindRulesInDir(const std::string&) const;
+		std::vector<RuleData> GetDeletedFiles(const std::vector<RuleData>&);
 		void UpdateUserRules(const std::vector<UserRule>&, bool);
-		void InsertNewEntries(const std::vector<std::shared_ptr<RuleData>>&);
-		void SwitchEntries(SecOption);
-		void UpdateEntries(SecOption, const std::vector<std::shared_ptr<RuleData>>&);
+		void InsertNewEntries(const std::vector<RuleDataPtr>&);
+		void UpdateEntries(SecOption, const std::vector<RuleDataPtr>&);
+		void RemoveDeletedFiles(const std::vector<RuleData>&);
 		void RemoveOldEntries();
 		void ListRules() const;
+		void WriteChanges();
 
 	private:
 		void GetPassword(std::string&);
@@ -70,7 +67,6 @@ namespace AppSecPolicy
 		RuleData StringToRuleData(const std::string&) const;
 		std::string RuleDataToString(const RuleData&) const;
 		void SortRules();
-		void ReorganizePolicyData();
 
 		const unsigned iterations = 1000;	//iterations for PBKDF2
 		const unsigned TAG_SIZE = AES::BLOCKSIZE;
@@ -88,7 +84,7 @@ namespace AppSecPolicy
 		std::vector<std::string> userRuleInfo;
 		std::vector<std::string> userRulePaths;
 
-		std::vector<std::string> switchedRules;
+		std::vector<std::string> updatedRules;
 		std::vector<std::string> removedRules;
 
 		std::vector<std::string> ruleInfo;		//data of already created rules

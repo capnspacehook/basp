@@ -3,15 +3,9 @@
 
 #include "include\concurrentqueue.h"
 
-#include <filesystem>
-#include <iostream>
-#include <memory>
 #include <atomic>
 #include <chrono>
 #include <thread>
-#include <string>
-#include <vector>
-#include <tuple>
 #pragma once
 
 namespace fs = std::experimental::filesystem;
@@ -21,13 +15,9 @@ namespace AppSecPolicy
 	class SecPolicy
 	{
 	public:
-		explicit SecPolicy() noexcept {};
+		SecPolicy() = default;
 		~SecPolicy()
 		{
-			//wait for all threads to finish
-			for (auto &t : threads)
-				t.join();
-
 			ApplyChanges(true);
 			PrintStats();
 		}
@@ -44,12 +34,15 @@ namespace AppSecPolicy
 		void TempRun(const std::string &path);
 		void TempRun(const std::string &dir, const std::string &exeFile);
 		void RemoveRules(const std::string &path);
-		void RemoveRules(const std::vector<std::string> &paths);
+		void RemoveRules(std::vector<std::string> &paths);
 		void EnumLoadedDLLs(const std::string &exeFile);
 		void ListRules();
 
 	protected:
 		friend class HashRule;
+		friend class RuleProducer;
+		friend class RuleConsumer;
+
 
 		//statistical variables
 		static std::atomic_uintmax_t createdRules;
@@ -57,6 +50,14 @@ namespace AppSecPolicy
 		static std::atomic_uintmax_t updatedRules;
 		static std::atomic_uintmax_t skippedRules;
 		static std::atomic_uintmax_t removedRules;
+		
+		//variables for managing threads
+		static std::atomic_uint doneProducers;
+		static std::atomic_uint doneConsumers;
+		static std::atomic_bool fileCheckingNotDone;
+		static moodycamel::ConcurrentQueue<DirInfo> dirItQueue;
+		static moodycamel::ConcurrentQueue<FileInfo> fileCheckQueue;
+		static moodycamel::ConcurrentQueue<RuleAction> ruleQueue;
 
 	private:
 		void CheckGlobalSettings();
@@ -66,36 +67,35 @@ namespace AppSecPolicy
 			startTime = std::chrono::high_resolution_clock::now();
 		}
 		void EnumAttributes(const std::string&);
-		void EnumDirContents(const fs::path&, uintmax_t&);
-		void DeleteRules(const fs::path&);
-		void CheckValidType(const fs::path&, uintmax_t&);
+		void DeleteRules(const std::vector<std::string>&);
+		void ModifyRules();
 		void PrintStats() const;
 		void ApplyChanges(bool);
 
 		std::string passwordGuess;
 		DataFileManager dataFileMan;
 
-		//program settings
-		unsigned dllWaitSecs = 3;
-
-		//file extensions that will be enforced
-		std::vector<std::string> executableTypes;
-
-		bool tempRuleCreation = false;
-		bool ruleRemoval = false;
-
-		const unsigned maxHardwareThreads = 
-			std::thread::hardware_concurrency();
-		std::vector<std::thread> threads;
-
 		SecOption secOption;
 		RuleType ruleType;
 
+		//program settings
+		unsigned dllWaitSecs = 3;
+
+		bool ruleRemoval = false;
+		bool tempRuleCreation = false;
+
+		std::vector<std::string> executableTypes;
+
+		std::vector<std::thread> ruleProducers;
+		std::vector<std::thread> ruleConsumers;
+		const unsigned maxThreads = std::thread::hardware_concurrency();
+		const unsigned initThreadCnt = maxThreads / 2;
+
 		std::vector<UserRule> enteredRules;
 		
-		std::vector<std::shared_ptr<RuleData>> createdRulesData;
-		std::vector<std::shared_ptr<RuleData>> updatedRulesData;
-		std::vector<std::shared_ptr<RuleData>> removededRulesData;
+		std::vector<RuleDataPtr> createdRulesData;
+		std::vector<RuleDataPtr> updatedRulesData;
+		std::vector<RuleDataPtr> removededRulesData;
 		
 		std::chrono::time_point<std::chrono::steady_clock> startTime;
 	};
