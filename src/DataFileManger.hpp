@@ -27,7 +27,7 @@ namespace AppSecPolicy
 			policyData.assign(new std::string);
 		}
 		~DataFileManager()
-		{
+		{	
 			ClosePolicyFile();
 			CloseHandle(policyFileHandle);
 		}
@@ -81,11 +81,11 @@ namespace AppSecPolicy
 		
 		std::string globalPolicySettings;
 
-		std::vector<std::string> userRuleInfo;
-		std::vector<std::string> userRulePaths;
+		std::vector<std::string> userRuleInfo;	//dirs the user entered to do work on
+		std::vector<std::string> userRulePaths;	//extracted paths from userRuleInfo
 
-		std::vector<std::string> updatedRules;
-		std::vector<std::string> removedRules;
+		std::vector<std::string> updatedRules;	//rules that have been updated or switched
+		std::vector<std::string> removedRules;	//rules that have been/to be removed
 
 		std::vector<std::string> ruleInfo;		//data of already created rules
 		std::vector<std::string> rulePaths;		//paths of created rules for searching

@@ -62,7 +62,7 @@ namespace AppSecPolicy
 	private:
 		void CheckGlobalSettings();
 		bool SetPrivileges(const std::string&, bool);
-		void StartTimer()
+		inline void StartTimer() noexcept
 		{
 			startTime = std::chrono::high_resolution_clock::now();
 		}

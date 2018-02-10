@@ -8,9 +8,6 @@
 //nessesary for md5 to function 
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
 
-// This is an open source non-commercial project. Dear PVS-Studio, please check it.
-// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include "include\Crypto++\hex.h"
 #include "include\Crypto++\files.h"
 #include "include\Crypto++\filters.h"
@@ -60,13 +57,11 @@ void HashRule::SwitchRule(const uintmax_t& fileSize, RuleDataPtr& ruleData)
 
 	try
 	{
-		string fileName;
 		string ruleType;
-		string rulePath;
 		string policyPath =
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
 
-		SecOption originalOp = get<SEC_OPTION>(*ruleData);
+		const SecOption originalOp = get<SEC_OPTION>(*ruleData);
 		SecOption swappedOp = static_cast<SecOption>(!static_cast<bool>(originalOp));
 
 		guid = get<RULE_GUID>(*ruleData);
@@ -78,7 +73,7 @@ void HashRule::SwitchRule(const uintmax_t& fileSize, RuleDataPtr& ruleData)
 			ruleType = "\\262144\\Hashes\\";
 
 		policyPath += ruleType;
-		rulePath += policyPath + guid;
+		string rulePath = move(policyPath + guid);
 
 		//get values of already created rule
 		RegKey hashRuleKey(
@@ -89,7 +84,7 @@ void HashRule::SwitchRule(const uintmax_t& fileSize, RuleDataPtr& ruleData)
 
 		if (!CheckIfRuleOutdated(fileSize, ruleData, false))
 		{
-			fileName = hashRuleKey.GetStringValue("Description");
+			string fileName = hashRuleKey.GetStringValue("Description");
 			friendlyName = hashRuleKey.GetStringValue("FriendlyName");
 			itemData = hashRuleKey.GetBinaryValue("ItemData");
 			itemSize = hashRuleKey.GetQwordValue("ItemSize");
@@ -123,7 +118,7 @@ void HashRule::SwitchRule(const uintmax_t& fileSize, RuleDataPtr& ruleData)
 	}
 }
 
-void HashRule::RemoveRule(const string &ruleGuid, SecOption policy)
+void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 {
 	using namespace winreg;
 
@@ -223,7 +218,7 @@ void HashRule::EnumFileVersion(const string &fileName)
 	DWORD  verHandle = 0;
 	UINT   size = 0;
 	LPBYTE lpBuffer = nullptr;
-	DWORD  verSize = GetFileVersionInfoSize(szVersionFile, &verHandle);
+	const DWORD  verSize = GetFileVersionInfoSize(szVersionFile, &verHandle);
 
 	if (verSize != NULL)
 	{
@@ -292,7 +287,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 		string originalName = fileName.substr(
 			fileName.rfind('\\') + 1,
 			fileName.length());
-		int sizeOnDisk = (4096 * ((itemSize + 4096 - 1) / 4096)) / 1024;
+		const int sizeOnDisk = (4096 * ((itemSize + 4096 - 1) / 4096)) / 1024;
 		
 		WIN32_FIND_DATA data;
 		HANDLE fileHandle = FindFirstFile(fileName.c_str(), &data);
@@ -323,7 +318,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 			//Prepare the label to get the metadata types in fileProps
 			temp[i] = "\\StringFileInfo\\%04x%04x\\" + fileProps[i];
 			StringCchPrintf(tszVerStrName, STRSAFE_MAX_CCH,
-				TEXT(temp[i].c_str()),
+				temp[i].c_str(),
 				langInfo[0], langInfo[1]);
 			//Get the string from the resource data
 			if (VerQueryValue(lpVI, tszVerStrName, &lpt, cbBufSize))
@@ -344,7 +339,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 }
 
 //gets current time 
-inline void HashRule::EnumCreationTime()
+inline void HashRule::EnumCreationTime() noexcept
 {
 	FILETIME currTime;
 	GetSystemTimeAsFileTime(&currTime);
@@ -371,8 +366,8 @@ void HashRule::HashDigests(const string &fileName)
 			shaHash, new HexEncoder(new StringSink(shaDigest))));
 
 	//convert string to format that can be loaded into registry
-	itemData = move(convertStrToByte(md5Digest));
-	sha256Hash = move(convertStrToByte(shaDigest));
+	itemData = convertStrToByte(md5Digest);
+	sha256Hash = convertStrToByte(shaDigest);
 }
 
 //converts string of hex into bytes
@@ -406,7 +401,7 @@ inline bool HashRule::MakeGUID()
 {
 	bool result;
 	GUID rGUID;
-	HRESULT hr = CoCreateGuid(&rGUID);
+	const HRESULT hr = CoCreateGuid(&rGUID);
 
 	if (hr == S_OK)
 	{

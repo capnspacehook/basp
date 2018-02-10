@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check it.
-// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include "DataFileManger.hpp"
 #include "include\WinReg.hpp"
 #include "Windows.h"
@@ -48,7 +45,7 @@ bool DataFileManager::OpenPolicyFile()
 		if (!adf.GetLastResult())
 		{
 			goodOpen = false;
-			cerr << "File modified!" << endl;
+			cerr << "File modified!" << '\n';
 		}
 
 	if (goodOpen)
@@ -86,13 +83,13 @@ bool DataFileManager::OpenPolicyFile()
 				getline(iss, temp);
 			}
 
-			ruleInfo.emplace_back(temp + "\n");
+			ruleInfo.emplace_back(temp + '\n');
 			rulePaths.emplace_back(temp.substr(
 				RULE_PATH_POS, temp.find("|{") - 4));
 
 			while (getline(iss, temp))
 			{
-				ruleInfo.emplace_back(temp + "\n");
+				ruleInfo.emplace_back(temp + '\n');
 				rulePaths.emplace_back(temp.substr(
 					RULE_PATH_POS, temp.find("|{") - 4));
 			}
@@ -162,7 +159,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 		if (values.size() < 5)
 		{
 			policyKey.SetDwordValue("AuthenticodeEnabled", 0);
-			policyKey.SetDwordValue("DefaultLevel", 262144);
+			policyKey.SetDwordValue("DefaultLevel", 0);
 			policyKey.SetMultiStringValue("ExecutableTypes", executableTypes);
 			policyKey.SetDwordValue("PolicyScope", 0);
 			policyKey.SetDwordValue("TransparentEnabled", 1);
@@ -194,19 +191,19 @@ string DataFileManager::GetCurrentPolicySettings() const
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 }
 
 RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	const string &path, RuleData &foundRuleData) const
 {
-	SecOption findOp = option;
-	RuleType findType = type;
+	const SecOption findOp = option;
+	const RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
 
 	if (rulePaths.empty())
@@ -218,7 +215,7 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	{
 		string foundRule = ruleInfo[distance(rulePaths.begin(), iterator)];
 	
-		foundRuleData = move(StringToRuleData(foundRule));
+		foundRuleData = StringToRuleData(foundRule);
 
 		option = get<SEC_OPTION>(foundRuleData);
 		type = get<RULE_TYPE>(foundRuleData);
@@ -244,10 +241,10 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 {
 	bool validRule = false;
 	
-	bool nonExistingSubdir = false;
-	SecOption findOp = option;
 	SecOption parentOp;
-	RuleType findType = type;
+	bool nonExistingSubdir = false;
+	const SecOption findOp = option;
+	const RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
 
 	if (userRulePaths.empty())
@@ -398,7 +395,7 @@ vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
 
 		rulesInDir.reserve(distance(removedRulesBegin, removedRulesEnd));
 		for (auto it = ruleInfoRange.first; it != ruleInfoRange.second; ++it)
-			rulesInDir.emplace_back(move(StringToRuleData(*it)));
+			rulesInDir.emplace_back(StringToRuleData(*it));
 	}
 
 	return rulesInDir;
@@ -473,7 +470,7 @@ string DataFileManager::RuleDataToString(const RuleData& ruleData) const
 		get<FILE_LOCATION>(ruleData) + '|' + get<RULE_GUID>(ruleData) + '|' +
 		get<FRIENDLY_NAME>(ruleData) + '|' + to_string(get<ITEM_SIZE>(ruleData)) + '|' + 
 		to_string(get<LAST_MODIFIED>(ruleData)) + '|' +
-		hashToStr(get<ITEM_DATA>(ruleData)) + '|' + hashToStr(get<SHA256_HASH>(ruleData)) + '\n';
+		hashToStr(get<ITEM_DATA>(ruleData)) + '|' + hashToStr(get<SHA256_HASH>(ruleData)) + '\n';;
 }
 
 void DataFileManager::SortRules()
@@ -534,7 +531,7 @@ vector<RuleData> DataFileManager::GetDeletedFiles(const vector<RuleData>& ruleDa
 
 	for (const auto &rule : updatedRules)
 	{
-		auto temp = move(FindRulesInDir(rule));
+		auto temp = FindRulesInDir(rule);
 		currentRules.insert(currentRules.begin(),
 			temp.begin(), temp.end());
 	}
@@ -582,7 +579,7 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 
 		SortRules();
 
-		RuleFindResult result = FindUserRule(option, type, location, index, parentDiffOp);
+		const RuleFindResult result = FindUserRule(option, type, location, index, parentDiffOp);
 
 		if (result == RuleFindResult::NO_MATCH && !rulesRemoved)
 		{
@@ -672,12 +669,12 @@ void DataFileManager::InsertNewEntries(const vector<RuleDataPtr>& ruleData)
 		for (const auto& rule : ruleData)
 		{
 			rulePaths.emplace_back(get<FILE_LOCATION>(*rule));
-			ruleInfo.emplace_back(move(RuleDataToString(*rule)));
+			ruleInfo.emplace_back(RuleDataToString(*rule));
 		}
 	}
 	catch (const exception &e)
 	{
-		cerr << e.what() << endl;
+		cerr << e.what() << '\n';
 	}
 }
 
@@ -694,7 +691,7 @@ void DataFileManager::UpdateEntries(SecOption option,
 		if (iterator != rulePaths.end() && !(get<FILE_LOCATION>(*updatedRule) < *iterator))
 		{
 			if (get<MOD_STATUS>(*updatedRule) == ModificationType::UPDATED)
-				ruleInfo[distance(rulePaths.begin(), iterator)] = move(RuleDataToString(*updatedRule));
+				ruleInfo[distance(rulePaths.begin(), iterator)] = RuleDataToString(*updatedRule);
 
 			else if (get<MOD_STATUS>(*updatedRule) == ModificationType::SWITCHED)
 				ruleInfo[distance(rulePaths.begin(), iterator)][SEC_OPTION] = static_cast<char>(option) + '0';
@@ -714,7 +711,7 @@ void DataFileManager::RemoveDeletedFiles(const vector<RuleData> &deletedFiles)
 		auto foundRule = lower_bound(rulePaths.begin(), rulePaths.end(),
 			get<FILE_LOCATION>(deletedFile));
 
-		auto removedIndex = distance(rulePaths.begin(), foundRule);
+		const auto removedIndex = distance(rulePaths.begin(), foundRule);
 		rulePaths.erase(foundRule);
 		ruleInfo.erase(ruleInfo.begin() + removedIndex);
 	}
@@ -776,7 +773,7 @@ void DataFileManager::WriteChanges()
 	policyData->clear();
 
 	for (const auto& line : userRuleInfo)
-		*policyData += line + '*' + '\n';
+		*policyData += line + '*' + '\n';;
 
 	for (const auto& line : ruleInfo)
 		*policyData += line;
@@ -791,7 +788,7 @@ void DataFileManager::VerifyPassword(string& guessPwd)
 	else
 		SetNewPassword();
 
-	cout << endl;
+	cout << '\n';
 }
 
 void DataFileManager::CheckPassword(string& guessPwd)
@@ -899,7 +896,7 @@ void DataFileManager::SetNewPassword()
 
 	passwordReset = true;
 
-	cout << "done" << endl;
+	cout << "done" << '\n';
 	ClosePolicyFile();
 }
 
@@ -919,9 +916,9 @@ void DataFileManager::GetPassword(string &password)
 
 void DataFileManager::ListRules() const
 {
-	char removed = static_cast<char>(SecOption::REMOVED) + '0';
-	char whiteList = static_cast<char>(SecOption::WHITELIST) + '0';
-	char blackList = static_cast<char>(SecOption::BLACKLIST) + '0';
+	const char removed = static_cast<char>(SecOption::REMOVED) + '0';
+	const char whiteList = static_cast<char>(SecOption::WHITELIST) + '0';
+	const char blackList = static_cast<char>(SecOption::BLACKLIST) + '0';
 
 	auto sortedRules = userRuleInfo;
 	sort(sortedRules.begin(), sortedRules.end(), 
@@ -944,8 +941,6 @@ void DataFileManager::ListRules() const
 				return path1.filename() < path2.filename();
 		});
 
-	
-
 	if (!sortedRules.empty())
 	{
 		unsigned index = 0;
@@ -957,17 +952,17 @@ void DataFileManager::ListRules() const
 			{
 				if (sortedRules[index][SEC_OPTION] == whiteList)
 					cout << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length()) << endl;
+						sortedRules[index].length()) << '\n';
 
 				else if (sortedRules[index][SEC_OPTION] == removed)
 					cout << "Except: " << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length()) << endl;
+						sortedRules[index].length()) << '\n';
 
 				else
 					break;
 			}
 
-			cout << endl;
+			cout << '\n';
 		}
 
 		if (sortedRules[0][0] == blackList)
@@ -977,11 +972,11 @@ void DataFileManager::ListRules() const
 			{
 				if (sortedRules[index][SEC_OPTION] == blackList)
 					cout << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length()) << endl;
+						sortedRules[index].length()) << '\n';
 
 				else if (sortedRules[index][SEC_OPTION] == removed)
 					cout << "Except: " << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length()) << endl;
+						sortedRules[index].length()) << '\n';
 
 				else
 					break;

@@ -1,6 +1,3 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check it.
-// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include "RuleProducer.hpp"
 #include "RuleConsumer.hpp"
 #include "SecPolicy.hpp"
@@ -89,7 +86,7 @@ void SecPolicy::TempRun(const string &path)
 		fs::path file = fs::path(path);
 		file.make_preferred();
 
-		uintmax_t size = fs::file_size(file);
+		const uintmax_t size = fs::file_size(file);
 		if (size > 0)
 		{
 			//create temporary hash rule
@@ -149,7 +146,7 @@ void SecPolicy::TempRun(const string &path)
 
 			if (!procCreated)
 			{
-				cerr << "CreateProcess error: " << GetLastError() << endl;
+				cerr << "CreateProcess error: " << GetLastError() << '\n';
 			}
 
 			Sleep(1000);
@@ -175,17 +172,17 @@ void SecPolicy::TempRun(const string &path)
 		else
 		{
 			cout << "Can't create hash rule for " <<
-				file.string() << endl;
+				file.string() << '\n';
 			exit(-1);
 		}
 	}
 	catch (const fs::filesystem_error &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 }
 
@@ -233,7 +230,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 
 		if (!procCreated)
 		{
-			cerr << "CreateProcess error: " << GetLastError() << endl;
+			cerr << "CreateProcess error: " << GetLastError() << '\n';
 			return;
 		}
 
@@ -246,12 +243,12 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 
 		//delete temporary rules in parallel
 		for (const auto &tempRuleID : createdRulesData)
-			ruleQueue.enqueue(move(make_tuple(
-				ModificationType::REMOVED, 0ULL, tempRuleID)));
+			ruleQueue.enqueue(make_tuple(
+				ModificationType::REMOVED, 0ULL, tempRuleID));
 
 		for (const auto &tempRule : updatedRulesData)
-			ruleQueue.enqueue(move(make_tuple(
-				ModificationType::SWITCHED, 0ULL, tempRule)));
+			ruleQueue.enqueue(make_tuple(
+				ModificationType::SWITCHED, 0ULL, tempRule));
 
 		ruleConsumers.clear();
 		for (int i = 0; i < maxThreads; i++)
@@ -262,7 +259,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 		for (auto &t : ruleConsumers)
 			t.join();
 
-		cout << "done" << endl;
+		cout << "done" << '\n';
 
 		//clear temp rules
 		createdRulesData.clear();
@@ -270,11 +267,11 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 	}
 	catch (const fs::filesystem_error &e)
 	{
-		cerr << e.what() << endl;
+		cerr << e.what() << '\n';
 	}
 	catch (const exception &e)
 	{
-		cerr << e.what() << endl;
+		cerr << e.what() << '\n';
 	}
 }
 
@@ -349,7 +346,7 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 
 	if (!procCreated)
 	{
-		cerr << "CreateProcess error: " << GetLastError() << endl;
+		cerr << "CreateProcess error: " << GetLastError() << '\n';
 		return;
 	}
 
@@ -367,14 +364,14 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 			GetFinalPathNameByHandle(
 				debugEvent.u.LoadDll.hFile, dllPath, MAX_PATH, FILE_NAME_OPENED);
 
-			cout << "New DLL found: " << dllPath << endl;
+			cout << "New DLL found: " << dllPath << '\n';
 
 			CloseHandle(debugEvent.u.LoadDll.hFile);
 		}
 		else if (debugEvent.dwDebugEventCode == EXCEPTION_DEBUG_EVENT)
 			if (debugEvent.u.Exception.ExceptionRecord.ExceptionFlags != 0)
 			{
-				cerr << "Fatal exception thrown" << endl;
+				cerr << "Fatal exception thrown" << '\n';
 				break;
 			}
 
@@ -417,7 +414,7 @@ bool SecPolicy::SetPrivileges(const string& privName, bool enablePriv)
 		privName.c_str(),   // privilege to lookup 
 		&luid))        // receives LUID of privilege
 	{
-		cerr << "LookupPrivilegeValue error: " << GetLastError() << endl;
+		cerr << "LookupPrivilegeValue error: " << GetLastError() << '\n';
 		return false;
 	}
 
@@ -438,14 +435,14 @@ bool SecPolicy::SetPrivileges(const string& privName, bool enablePriv)
 		(PTOKEN_PRIVILEGES)nullptr,
 		(PDWORD)nullptr))
 	{
-		cerr << "AdjustTokenPrivileges error: " << GetLastError() << endl;
+		cerr << "AdjustTokenPrivileges error: " << GetLastError() << '\n';
 		return false;
 	}
 
 	if (GetLastError() == ERROR_NOT_ALL_ASSIGNED)
 
 	{
-		cerr << "The token does not have the specified privilege." << endl;
+		cerr << "The token does not have the specified privilege." << '\n';
 		return false;
 	}
 
@@ -512,11 +509,11 @@ void SecPolicy::CheckGlobalSettings()
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 }
 
@@ -568,7 +565,7 @@ void SecPolicy::EnumAttributes(const string &fileName)
 			for (auto &t : ruleConsumers)
 				t.join();
 
-			cout << "done" << endl;
+			cout << "done" << '\n';
 		}
 		else
 		{
@@ -582,13 +579,13 @@ void SecPolicy::EnumAttributes(const string &fileName)
 					<< initialFile.string();
 
 				//CheckValidType(initialFile, fileSize);
-				cout << "done" << endl;
+				cout << "done" << '\n';
 			}
 
 			else
 			{
 				cout << "Can't create hash rule for " <<
-					initialFile.string() << endl;
+					initialFile.string() << '\n';
 				exit(-1);
 			}
 
@@ -596,11 +593,11 @@ void SecPolicy::EnumAttributes(const string &fileName)
 	}
 	catch (const fs::filesystem_error &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 }
 
@@ -633,7 +630,7 @@ void SecPolicy::ModifyRules()
 				if (binary_search(executableTypes.cbegin(),
 					executableTypes.cend(), extension))
 				{
-					RuleFindResult result = dataFileMan.FindRule(
+					const RuleFindResult result = dataFileMan.FindRule(
 						secOption, ruleType, file, ruleData);
 
 					if (result == RuleFindResult::NO_MATCH)
@@ -677,11 +674,11 @@ void SecPolicy::ModifyRules()
 	}
 	catch (const fs::filesystem_error &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 }
 
@@ -733,12 +730,11 @@ void SecPolicy::PrintStats() const
 {
 	using namespace chrono;
 
-	common_type_t<nanoseconds,
-		nanoseconds> diff =
+	const auto diff =
 		high_resolution_clock::now() - startTime;
 
 	int secs;
-	int mins = duration<double, milli>(diff).count() / 60000;
+	const int mins = duration<double, milli>(diff).count() / 60000;
 
 	if (mins > 0)
 		secs = static_cast<int>(
@@ -755,10 +751,10 @@ void SecPolicy::PrintStats() const
 		<< "in ";
 
 	if (mins > 0)
-		cout << mins << " mins, " << secs << " secs" << endl;
+		cout << mins << " mins, " << secs << " secs" << '\n';
 
 	else
-		cout << secs << " secs" << endl;
+		cout << secs << " secs" << '\n';
 }
 
 //make sure Windows applies policy changes
@@ -824,7 +820,8 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 						ruleQueue.enqueue(move(make_tuple(
 							ModificationType::REMOVED, 0ULL, make_shared<RuleData>(rule))));
 
-					for (int i = 0; i < maxThreads; i++)
+					auto rmThreads = deletedFiles.size() / 100 % maxThreads;
+					for (int i = 0; i < rmThreads; i++)
 						ruleConsumers.emplace_back(
 							&RuleConsumer::ConsumeRules,
 							RuleConsumer());
@@ -846,10 +843,10 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cout << e.what() << '\n';
 	}
 }

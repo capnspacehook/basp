@@ -1,15 +1,15 @@
-// This is an open source non-commercial project. Dear PVS-Studio, please check it.
-// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
-
 #include "AppSecPolicy.hpp"
 #include "SecPolicy.hpp"
 #include "HashRule.hpp"
+
+#include "include\clara.hpp"
 
 #include <algorithm>
 #include <iostream>	
 #include <regex>
 
 using namespace std;
+using namespace clara;
 using namespace AppSecPolicy;
 namespace fs = std::experimental::filesystem;
 
@@ -24,14 +24,13 @@ int main(int argc, char *argv[])
 
 	string fullArgs;
 	bool validOp = false;
-	string programName = argv[0];
 	vector<string> baseOptions = {
 		"-b", "-w" , "-t", "-td", "-l", "-r", "/?" };
 	vector<string> extndOptions = {
 		"-e", "--admin", "--password" };
 	
 	//get the name of the program
-	programName = programName.substr(
+	string programName = string(argv[0]).substr(
 		programName.rfind('\\') + 1,
 		programName.length());
 
@@ -222,7 +221,7 @@ int main(int argc, char *argv[])
 				if (!fs::is_directory(fileArgs[0]))
 				{
 					cout << "If you wish to temporarily run a single file, please "
-						<< "specify only one file and omit the -e option" << endl;
+						<< "specify only one file and omit the -e option" << '\n';
 					PrintInvalidMsg(programName);
 				}
 
@@ -298,7 +297,7 @@ bool CheckDirConflicts(vector<string> &files)
 		temp = paths[i];
 		while (paths[i].root_path() != temp.parent_path())
 		{
-			if (paths[0] == temp.parent_path())
+			if (paths.front() == temp.parent_path())
 			{
 				noConflicts = false;
 				break;

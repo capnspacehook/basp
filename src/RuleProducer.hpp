@@ -12,7 +12,6 @@ namespace AppSecPolicy
 		void ProduceRules()
 		{
 			fs::path dir;
-			bool dirsLeft;
 			DirInfo dirInfo;
 			uintmax_t fileSize;
 			std::string fileName;
@@ -24,7 +23,6 @@ namespace AppSecPolicy
 
 			while (SecPolicy::dirItQueue.try_dequeue(dirCtok, dirInfo))
 			{
-				dirsLeft = true;
 				dir = std::move(dirInfo.first);
 				fileSize = dirInfo.second;
 				for (const auto &currFile : fs::directory_iterator(dir))
@@ -33,7 +31,7 @@ namespace AppSecPolicy
 					{
 						if (fs::is_directory(currFile))
 							SecPolicy::dirItQueue.enqueue(dirPtok,
-								std::move(std::make_pair(currFile, fileSize)));
+								std::make_pair(currFile, fileSize));
 
 						else
 						{
@@ -53,7 +51,7 @@ namespace AppSecPolicy
 										extension.begin(), toupper);
 
 									SecPolicy::fileCheckQueue.enqueue(fileCheckPtok,
-										std::move(std::make_tuple(fileName, extension, fileSize)));
+										std::make_tuple(fileName, extension, fileSize));
 								}
 							}
 						}

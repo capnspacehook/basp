@@ -89,7 +89,7 @@ namespace Protected_Ptr
 			SecureWipeData();
 		}
 
-		void SetWipeOnExit(bool wipe) { overwriteOnExit = wipe; }
+		void SetWipeOnExit(bool wipe) noexcept { overwriteOnExit = wipe; }
 		bool IsProtected() const { return isEncrypted };
 		void ProtectMemory(bool encrypt)
 		{
@@ -114,7 +114,7 @@ namespace Protected_Ptr
 					if (!CryptProtectMemory(getRawPtr(), dataBlockSize,
 						CRYPTPROTECTMEMORY_SAME_PROCESS))
 					{
-						cerr << "CryptProtectMemory failed: " << GetLastError() << endl;
+						cerr << "CryptProtectMemory failed: " << GetLastError() << '\n';
 					}
 				}
 				else if (!encrypt && isEncrypted)
@@ -123,7 +123,7 @@ namespace Protected_Ptr
 					if (!CryptUnprotectMemory(getRawPtr(), dataBlockSize,
 						CRYPTPROTECTMEMORY_SAME_PROCESS))
 					{
-						cerr << "CryptProtectMemory failed: " << GetLastError() << endl;
+						cerr << "CryptProtectMemory failed: " << GetLastError() << '\n';
 					}
 				}
 

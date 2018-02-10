@@ -8,11 +8,11 @@ namespace AppSecPolicy
 	{
 	public:
 		HashRule() {};
-		explicit HashRule(HashRule &other)
+		HashRule(HashRule &other) noexcept
 		{
 			other.swap(*this);
 		}
-		explicit HashRule(HashRule &&other) noexcept
+		HashRule(HashRule &&other) noexcept
 		{
 			other.swap(*this);
 		}
@@ -22,7 +22,7 @@ namespace AppSecPolicy
 			RuleDataPtr&, bool = true);
 		void SwitchRule(const uintmax_t&, RuleDataPtr&);
 		void RemoveRule(const std::string &guid,
-			SecOption policy);
+			SecOption policy) const;
 
 		void swap(HashRule& other) noexcept
 		{
@@ -36,7 +36,7 @@ namespace AppSecPolicy
 			swap(this->lastModified, other.lastModified);
 			swap(this->sha256Hash, other.sha256Hash);
 		}
-		HashRule& operator=(HashRule rhs)
+		HashRule& operator=(HashRule rhs) noexcept
 		{
 			rhs.swap(*this);
 			return *this;
@@ -51,7 +51,7 @@ namespace AppSecPolicy
 		void UpdateRule(const uintmax_t&, RuleData&, bool);
 		void EnumFileVersion(const std::string &fileName);
 		void EnumFriendlyName(const std::string &fileName);
-		inline void EnumCreationTime();
+		inline void EnumCreationTime() noexcept;
 		void HashDigests(const std::string &fileName);
 		inline void CreateGUID();
 		void WriteToRegistry(const std::string &fileName,

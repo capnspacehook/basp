@@ -22,6 +22,7 @@ namespace AppSecPolicy
 	const int SHA256_HASH = 8;
 	const int MOD_STATUS = 9;
 
+	//FileInfo access names
 	const int RULE_PATH = 0;
 	const int EXTENSION = 1;
 	const int DATA_SIZE = 2;
