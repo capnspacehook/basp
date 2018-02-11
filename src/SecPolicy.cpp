@@ -34,10 +34,6 @@ ConcurrentQueue<RuleAction> SecPolicy::ruleQueue;
 void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
 	RuleType rType)
 {
-	dataFileMan.VerifyPassword(passwordGuess);
-	CheckGlobalSettings();
-	StartTimer();
-
 	secOption = op;
 	ruleType = rType;
 
@@ -47,17 +43,13 @@ void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
 
 	enteredRules.emplace_back(
 		secOption, ruleType, lowerPath);
-	EnumAttributes(lowerPath);
+	StartProcessing(lowerPath);
 }
 
 //overload that creates hash rules for each of the files in the vector 'paths'
 void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	RuleType rType)
 {
-	dataFileMan.VerifyPassword(passwordGuess);
-	CheckGlobalSettings();
-	StartTimer();
-
 	secOption = op;
 	ruleType = rType;
 
@@ -69,7 +61,7 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 
 		enteredRules.emplace_back(
 			secOption, ruleType, path);
-		EnumAttributes(path);
+		StartProcessing(path);
 	}
 }
 
@@ -78,10 +70,6 @@ void SecPolicy::TempRun(const string &path)
 {
 	try
 	{
-		dataFileMan.VerifyPassword(passwordGuess);
-		CheckGlobalSettings();
-		StartTimer();
-
 		tempRuleCreation = true;
 		fs::path file = fs::path(path);
 		file.make_preferred();
@@ -191,10 +179,6 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 {
 	try
 	{
-		dataFileMan.VerifyPassword(passwordGuess);
-		CheckGlobalSettings();
-		StartTimer();
-
 		auto tempDir = fs::path(dir);
 		auto exeFile = fs::path(file);
 
@@ -278,10 +262,6 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 //delete rules from registry
 void SecPolicy::RemoveRules(const string &path)
 {
-	dataFileMan.VerifyPassword(passwordGuess);
-	CheckGlobalSettings();
-	StartTimer();
-
 	string lowerPath;
 	transform(path.begin(), path.end(),
 		back_inserter(lowerPath), tolower);
@@ -298,10 +278,6 @@ void SecPolicy::RemoveRules(const string &path)
 
 void SecPolicy::RemoveRules(vector<string> &paths)
 {
-	dataFileMan.VerifyPassword(passwordGuess);
-	CheckGlobalSettings();
-	StartTimer();
-
 	string lowerPath;
 
 	ruleRemoval = true;
@@ -389,65 +365,10 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 
 void SecPolicy::ListRules()
 {
-	dataFileMan.VerifyPassword(passwordGuess);
-	CheckGlobalSettings();
-	StartTimer();
-
 	dataFileMan.ListRules();
 }
 
-bool SecPolicy::SetPrivileges(const string& privName, bool enablePriv)
-{
-	HANDLE tokenH;
-	HANDLE localProc = GetCurrentProcess();
-	if (!OpenProcessToken(localProc, TOKEN_ADJUST_PRIVILEGES, &tokenH))
-	{
-		cerr << "OpenProcessToken error: " << GetLastError();
-		return false;
-	}
 
-	TOKEN_PRIVILEGES tp;
-	LUID luid;
-
-	if (!LookupPrivilegeValue(
-		nullptr,            // lookup privilege on local system
-		privName.c_str(),   // privilege to lookup 
-		&luid))        // receives LUID of privilege
-	{
-		cerr << "LookupPrivilegeValue error: " << GetLastError() << '\n';
-		return false;
-	}
-
-	tp.PrivilegeCount = 1;
-	tp.Privileges[0].Luid = luid;
-	if (enablePriv)
-		tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-	else
-		tp.Privileges[0].Attributes = 0;
-
-	// Enable the privilege or disable all privileges.
-
-	if (!AdjustTokenPrivileges(
-		tokenH,
-		FALSE,
-		&tp,
-		sizeof(TOKEN_PRIVILEGES),
-		(PTOKEN_PRIVILEGES)nullptr,
-		(PDWORD)nullptr))
-	{
-		cerr << "AdjustTokenPrivileges error: " << GetLastError() << '\n';
-		return false;
-	}
-
-	if (GetLastError() == ERROR_NOT_ALL_ASSIGNED)
-
-	{
-		cerr << "The token does not have the specified privilege." << '\n';
-		return false;
-	}
-
-	return true;
-}
 
 //makes sure all the nessesary settings are in place to apply a SRP policy,
 //if a computer has never had policy applied before it will be missing
@@ -519,7 +440,7 @@ void SecPolicy::CheckGlobalSettings()
 
 //detirmine whether file passed is a 
 //regular file or directory and process respectively
-void SecPolicy::EnumAttributes(const string &fileName)
+void SecPolicy::StartProcessing(const string &fileName)
 {
 	try
 	{
@@ -546,7 +467,7 @@ void SecPolicy::EnumAttributes(const string &fileName)
 					<< initialFile.string() << "...";
 			}
 
-			dirItQueue.enqueue(move(make_pair(initialFile, fileSize)));
+			dirItQueue.enqueue(make_pair(initialFile, fileSize));
 
 			for (int i = 0; i < initThreadCnt; i++)
 			{
@@ -578,7 +499,6 @@ void SecPolicy::EnumAttributes(const string &fileName)
 				cout << action << " "
 					<< initialFile.string();
 
-				//CheckValidType(initialFile, fileSize);
 				cout << "done" << '\n';
 			}
 
@@ -837,6 +757,16 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 				dataFileMan.RemoveOldEntries();
 
 			dataFileMan.WriteChanges();
+
+			/*RuleData program;
+			if (RuleFindResult::EXACT_MATCH != dataFileMan.FindRule(
+				SecOption::WHITELIST, RuleType::HASHRULE, programName, program))
+			{
+				HashRule hashRule;
+				hashRule.CreateNewHashRule(make_shared<RuleData>(program));
+
+				dataFileMan.WriteChanges();
+			}*/
 		}
 
 		cout << "done\n\n";

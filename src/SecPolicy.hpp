@@ -15,16 +15,18 @@ namespace AppSecPolicy
 	class SecPolicy
 	{
 	public:
-		SecPolicy() = default;
+		SecPolicy(std::string& pwd)
+		{
+			passwordGuess = std::move(pwd);
+
+			dataFileMan.VerifyPassword(passwordGuess);
+			CheckGlobalSettings();
+			StartTimer();
+		}
 		~SecPolicy()
 		{
 			ApplyChanges(true);
 			PrintStats();
-		}
-
-		void SetPasswordGuess(std::string& pwd)
-		{
-			passwordGuess = std::move(pwd);
 		}
 
 		void CreatePolicy(const std::string &path,
@@ -66,12 +68,13 @@ namespace AppSecPolicy
 		{
 			startTime = std::chrono::high_resolution_clock::now();
 		}
-		void EnumAttributes(const std::string&);
+		void StartProcessing(const std::string&);
 		void DeleteRules(const std::vector<std::string>&);
 		void ModifyRules();
 		void PrintStats() const;
 		void ApplyChanges(bool);
 
+		std::string programName;
 		std::string passwordGuess;
 		DataFileManager dataFileMan;
 

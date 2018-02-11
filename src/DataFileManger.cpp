@@ -943,6 +943,7 @@ void DataFileManager::ListRules() const
 
 	if (!sortedRules.empty())
 	{
+		cout << '\n';
 		unsigned index = 0;
 
 		if (sortedRules[0][0] == whiteList)
