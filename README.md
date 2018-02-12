@@ -14,6 +14,7 @@ Current features:
 * Encrypted settings file stores policy settings and rules separate from the Windows registry
 * Dynamic whitelisting, ie. allowing a blacklisted program for one launch only
 * Alerts user if global policy settings were changed and reapplies appropriate settings
+* Drops dangerous and unneeded privilges
 
 Goals of project:
 * Compatibility on all versions and editions of Windows from Vista up
