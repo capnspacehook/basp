@@ -1,9 +1,13 @@
-#include "AppSecPolicy.hpp"
 #include "SecPolicy.hpp"
+#include "AppSecPolicy.hpp"
+#include "DataFileManger.hpp"
+
 #pragma once
 
 namespace AppSecPolicy
 {
+	class RuleConsumer;
+
 	class RuleProducer
 	{
 	public:
@@ -61,5 +65,29 @@ namespace AppSecPolicy
 
 			SecPolicy::doneProducers++;
 		}
+
+		void ConvertRules()
+		{
+			producerCount++;
+
+			std::string temp;
+			RuleData ruleData;
+			moodycamel::ConsumerToken ruleStrCtok(SecPolicy::ruleStringQueue);
+			moodycamel::ProducerToken ruleCheckPtoc(SecPolicy::ruleCheckQueue);
+
+			while (SecPolicy::ruleStringQueue.try_dequeue(ruleStrCtok, temp))
+			{
+				ruleData = DataFileManager::StringToRuleData(temp);
+				SecPolicy::ruleCheckQueue.enqueue(ruleCheckPtoc, move(ruleData));
+			}
+
+			SecPolicy::doneProducers++;
+		}
+
+	private:
+		friend class RuleConsumer;
+		static std::atomic_uint producerCount;
 	};
+
+	std::atomic_uint RuleProducer::producerCount = 0;
 }

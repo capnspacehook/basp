@@ -209,6 +209,187 @@ void HashRule::UpdateRule(const uintmax_t& fileSize, RuleData& ruleData, bool fi
 	SecPolicy::updatedRules++;
 }
 
+void HashRule::CheckRuleIntegrity(const RuleData& ruleData)
+{
+	using namespace winreg;
+	
+	bool ruleModified = false;
+	auto policy = get<SEC_OPTION>(ruleData);
+	string policyPath = "SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
+
+	string ruleType = [&policy]()
+	{
+		if (policy == SecOption::BLACKLIST)
+			return "\\0\\Hashes\\";
+		else
+			return "\\262144\\Hashes\\";
+	} ();
+
+	policyPath += ruleType + get<RULE_GUID>(ruleData);
+
+	RegKey hashRuleKey;
+	string ruleName = get<FILE_LOCATION>(ruleData);
+
+	try
+	{
+		hashRuleKey.Open(
+			HKEY_LOCAL_MACHINE,
+			policyPath,
+			KEY_READ | KEY_WRITE);
+	}
+	catch (const RegException &e)
+	{
+		if (e.ErrorCode() == 2)
+		{
+			hashRuleKey.Create(
+				HKEY_LOCAL_MACHINE,
+				policyPath,
+				KEY_READ | KEY_WRITE);
+
+			hashRuleKey.SetStringValue("FriendlyName", get<FRIENDLY_NAME>(ruleData));
+			hashRuleKey.SetDwordValue("HashAlg", hashAlg);
+			hashRuleKey.SetBinaryValue("ItemData", get<ITEM_DATA>(ruleData));
+			hashRuleKey.SetQwordValue("ItemSize", get<ITEM_SIZE>(ruleData));
+			hashRuleKey.SetQwordValue("LastModified", get<LAST_MODIFIED>(ruleData));
+			hashRuleKey.SetDwordValue("SaferFlags", 0);	//not used
+
+			hashRuleKey.Close();
+			hashRuleKey.Create(
+				HKEY_LOCAL_MACHINE,
+				policyPath + "\\SHA256",
+				KEY_READ | KEY_WRITE);
+
+			hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);
+			hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));
+
+			SecPolicy::createdRules++;
+			cout << "The rule for " << ruleName << " was deleted\n";
+			return;
+		}
+
+		else
+		{
+			cout << e.what() << endl;
+			return;
+		}
+	}
+	catch (const exception &e)
+	{
+		cout << e.what() << endl;
+	}
+
+	try
+	{
+		if (get<FRIENDLY_NAME>(ruleData) != hashRuleKey.GetStringValue("FriendlyName"))
+		{
+			ruleModified = true;
+			hashRuleKey.SetStringValue("FriendlyName", get<FRIENDLY_NAME>(ruleData));
+		}
+
+		if (hashAlg != hashRuleKey.GetDwordValue("HashAlg"))
+		{
+			ruleModified = true;
+			hashRuleKey.SetDwordValue("HashAlg", hashAlg);
+		}
+
+		if (get<ITEM_DATA>(ruleData) != hashRuleKey.GetBinaryValue("ItemData"))
+		{
+			ruleModified = true;
+			hashRuleKey.SetBinaryValue("ItemData", get<ITEM_DATA>(ruleData));
+		}
+
+		if (get<ITEM_SIZE>(ruleData) != hashRuleKey.GetQwordValue("ItemSize"))
+		{
+			ruleModified = true;
+			hashRuleKey.SetQwordValue("ItemSize", get<ITEM_SIZE>(ruleData));
+		}
+
+		if (get<LAST_MODIFIED>(ruleData) != hashRuleKey.GetQwordValue("LastModified"))
+		{
+			ruleModified = true;
+			hashRuleKey.SetQwordValue("LastModified", get<LAST_MODIFIED>(ruleData));
+		}
+	}
+	catch (const RegException &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (const exception &e)
+	{
+		cout << e.what() << endl;
+	}
+
+	try
+	{
+		hashRuleKey.Close();
+		hashRuleKey.Open(
+			HKEY_LOCAL_MACHINE,
+			policyPath + "\\SHA256",
+			KEY_READ | KEY_WRITE);
+
+	}
+	catch (const RegException &e)
+	{
+		if (e.ErrorCode() == 2)
+		{
+			hashRuleKey.Create(
+				HKEY_LOCAL_MACHINE,
+				policyPath + "\\SHA256",
+				KEY_READ | KEY_WRITE);
+
+			hashRuleKey.SetQwordValue("ItemSize", get<ITEM_SIZE>(ruleData));
+			hashRuleKey.SetQwordValue("LastModified", get<LAST_MODIFIED>(ruleData));
+
+			SecPolicy::updatedRules++;
+			cout << "The rule for " << ruleName << " was modified\n";
+			return;
+		}
+
+		else
+		{
+			cout << e.what() << endl;
+			return;
+		}
+	}
+	catch (const exception &e)
+	{
+		cout << e.what() << endl;
+	}
+
+	try
+	{
+
+		if (shaHashAlg != hashRuleKey.GetDwordValue("HashAlg"))
+		{
+			ruleModified = true;
+			hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);
+		}
+
+		if (get<SHA256_HASH>(ruleData) != hashRuleKey.GetBinaryValue("ItemData"))
+		{
+			ruleModified = true;
+			hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));
+		}
+
+		if (ruleModified)
+		{
+			SecPolicy::updatedRules++;
+			cout << "The rule for " << ruleName << " was modified\n";
+		}
+
+		else
+			SecPolicy::skippedRules++;
+	}
+	catch (const RegException &e)
+	{
+		cout << e.what() << endl;
+	}
+	catch (const exception &e)
+	{
+		cout << e.what() << endl;
+	}
+}
+
 void HashRule::EnumFileVersion(const string &fileName)
 {
 	//Code adapted from crashmstr at
@@ -428,29 +609,29 @@ inline bool HashRule::MakeGUID()
 }
 
 //write the hash rule to the registry
-void HashRule::WriteToRegistry(const string &fileName,
-	const SecOption &policy)
+void HashRule::WriteToRegistry(const string &fileName, SecOption policy)
 {
 	using namespace winreg;
 
 	try
 	{
-		string ruleType;
 		string policyPath =
 			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
 
-		if (policy == SecOption::BLACKLIST)
-			ruleType = "\\0\\Hashes\\";
-		else
-			ruleType = "\\262144\\Hashes\\";
+		string ruleType = [&policy]()
+		{
+			if (policy == SecOption::BLACKLIST)
+				return "\\0\\Hashes\\";
+			else
+				return "\\262144\\Hashes\\";
+		} ();
 
 		policyPath += ruleType + guid;
 
 		RegKey hashRuleKey(
 			HKEY_LOCAL_MACHINE,
 			policyPath,
-			KEY_WRITE
-		);
+			KEY_WRITE);
 
 		hashRuleKey.SetStringValue("Description", fileName);
 		hashRuleKey.SetStringValue("FriendlyName", friendlyName);

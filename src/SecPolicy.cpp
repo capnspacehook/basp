@@ -29,27 +29,14 @@ atomic_bool SecPolicy::fileCheckingNotDone = true;
 ConcurrentQueue<DirInfo> SecPolicy::dirItQueue;
 ConcurrentQueue<FileInfo> SecPolicy::fileCheckQueue;
 ConcurrentQueue<RuleAction> SecPolicy::ruleQueue;
+ConcurrentQueue<RuleData> SecPolicy::ruleCheckQueue;
+ConcurrentQueue<string> SecPolicy::ruleStringQueue;
 
-//create hash rules recursively in 'path'
-void SecPolicy::CreatePolicy(const string &path, const SecOption &op,
-	RuleType rType)
-{
-	secOption = op;
-	ruleType = rType;
-
-	string lowerPath;
-	transform(path.begin(), path.end(),
-		back_inserter(lowerPath), tolower);
-
-	enteredRules.emplace_back(
-		secOption, ruleType, lowerPath);
-	StartProcessing(lowerPath);
-}
-
-//overload that creates hash rules for each of the files in the vector 'paths'
+//creates hash rules for each of the files in the vector 'paths'
 void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	RuleType rType)
 {
+	justListing = false;
 	secOption = op;
 	ruleType = rType;
 
@@ -60,8 +47,8 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 			back_inserter(lowerPath), tolower);
 
 		enteredRules.emplace_back(
-			secOption, ruleType, path);
-		StartProcessing(path);
+			secOption, ruleType, lowerPath);
+		StartProcessing(lowerPath);
 	}
 }
 
@@ -70,6 +57,7 @@ void SecPolicy::TempRun(const string &path)
 {
 	try
 	{
+		justListing = false;
 		tempRuleCreation = true;
 		fs::path file = fs::path(path);
 		file.make_preferred();
@@ -179,6 +167,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 {
 	try
 	{
+		justListing = false;
 		auto tempDir = fs::path(dir);
 		auto exeFile = fs::path(file);
 
@@ -186,7 +175,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 		exeFile.make_preferred();
 
 		tempRuleCreation = true;
-		CreatePolicy(dir, SecOption::WHITELIST);
+		CreatePolicy(vector<string>{dir}, SecOption::WHITELIST);
 
 		ApplyChanges(false);
 
@@ -260,24 +249,9 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 }
 
 //delete rules from registry
-void SecPolicy::RemoveRules(const string &path)
-{
-	string lowerPath;
-	transform(path.begin(), path.end(),
-		back_inserter(lowerPath), tolower);
-
-	ruleRemoval = true;
-	enteredRules.emplace_back(
-		SecOption::REMOVED, ruleType, lowerPath);
-
-	vector<string> paths;
-	paths.emplace_back(lowerPath);
-
-	DeleteRules(paths);
-}
-
 void SecPolicy::RemoveRules(vector<string> &paths)
 {
+	justListing = false;
 	string lowerPath;
 
 	ruleRemoval = true;
@@ -290,7 +264,6 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 
 		enteredRules.emplace_back(
 			SecOption::REMOVED, ruleType, lowerPath);
-		
 	}
 
 	DeleteRules(paths);
@@ -363,12 +336,63 @@ void SecPolicy::EnumLoadedDLLs(const string &exeFile)
 	CloseHandle(pi.hThread);
 }
 
+void SecPolicy::CheckRules()
+{
+	ruleCheck = true;
+	justListing = false;
+
+	if (dataFileMan.AreRulesCreated())
+	{
+		cout << "Cannot check rules, no rules have been created\n";
+		return;
+	}
+
+	string temp;
+	istringstream ruleStrings(dataFileMan.GetRuleList());
+
+	getline(ruleStrings, temp);
+	getline(ruleStrings, temp);
+	getline(ruleStrings, temp);
+
+	while (temp.back() == '*')
+		getline(ruleStrings, temp);
+
+	ruleStringQueue.enqueue(move(temp));
+
+	while (getline(ruleStrings, temp))
+		ruleStringQueue.enqueue(move(temp));
+
+	for (int i = 0; i < initThreadCnt; i++)
+	{
+		ruleProducers.emplace_back(
+			&RuleProducer::ConvertRules,
+			RuleProducer());
+	}
+
+	for (int i = 0; i < initThreadCnt; i++)
+	{
+		ruleConsumers.emplace_back(
+			&RuleConsumer::CheckRules,
+			RuleConsumer());
+	}
+
+	for (auto &t : ruleProducers)
+		t.join();
+
+	for (auto &t : ruleConsumers)
+		t.join();
+
+	if (updatedRules == 0 && createdRules == 0)
+		cout << "\nFinished checking rules. All rules are correct";
+
+	else
+		cout << "\nFinished checking rules. Changed rules are now corrected";
+}
+
 void SecPolicy::ListRules()
 {
 	dataFileMan.ListRules();
 }
-
-
 
 //makes sure all the nessesary settings are in place to apply a SRP policy,
 //if a computer has never had policy applied before it will be missing
@@ -561,24 +585,24 @@ void SecPolicy::ModifyRules()
 						createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 						ruleQueue.enqueue(
-							move(make_tuple(
-								ModificationType::CREATED, 0ULL, createdRulesData.back())));
+							make_tuple(
+								ModificationType::CREATED, 0ULL, createdRulesData.back()));
 					}
 					else if (result == RuleFindResult::DIFF_SEC_OP)
 					{
 						updatedRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 						ruleQueue.enqueue(
-							move(make_tuple(
-								ModificationType::SWITCHED, fileSize, updatedRulesData.back())));
+							make_tuple(
+								ModificationType::SWITCHED, fileSize, updatedRulesData.back()));
 					}
 					else if (result == RuleFindResult::EXACT_MATCH)
 					{
 						updatedRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 						ruleQueue.enqueue(
-							move(make_tuple(
-								ModificationType::UPDATED, fileSize, updatedRulesData.back())));
+							make_tuple(
+								ModificationType::UPDATED, fileSize, updatedRulesData.back()));
 					}
 
 					if (ruleConsumers.size() < initThreadCnt
@@ -650,6 +674,8 @@ void SecPolicy::PrintStats() const
 {
 	using namespace chrono;
 
+	cout << '\n';
+
 	const auto diff =
 		high_resolution_clock::now() - startTime;
 
@@ -688,7 +714,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 	using namespace winreg;
 	try
 	{
-		cout << endl << "Applying changes...";
+		cout << "\nApplying changes...";
 
 		executableTypes.emplace_back("ABC");
 		RegKey policySettings(
@@ -715,7 +741,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 			if (updatedRules || switchedRules)
 				dataFileMan.UpdateEntries(secOption, updatedRulesData);
 
-			if (updatedRules || skippedRules)
+			if ((updatedRules || skippedRules) && !ruleCheck)
 			{
 				auto totalRulesProcessed = 
 					[](const vector<RuleDataPtr> &vec1, const vector<RuleDataPtr> &vec2)
@@ -757,19 +783,9 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 				dataFileMan.RemoveOldEntries();
 
 			dataFileMan.WriteChanges();
-
-			/*RuleData program;
-			if (RuleFindResult::EXACT_MATCH != dataFileMan.FindRule(
-				SecOption::WHITELIST, RuleType::HASHRULE, programName, program))
-			{
-				HashRule hashRule;
-				hashRule.CreateNewHashRule(make_shared<RuleData>(program));
-
-				dataFileMan.WriteChanges();
-			}*/
 		}
 
-		cout << "done\n\n";
+		cout << "done\n";
 	}
 	catch (const RegException &e)
 	{

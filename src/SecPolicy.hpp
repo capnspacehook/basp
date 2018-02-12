@@ -3,6 +3,7 @@
 
 #include "include\concurrentqueue.h"
 
+#include <iostream>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -15,9 +16,11 @@ namespace AppSecPolicy
 	class SecPolicy
 	{
 	public:
-		SecPolicy(std::string& pwd)
+		SecPolicy(std::string& pwd, bool lstRules)
 		{
+			listRules = lstRules;
 			passwordGuess = std::move(pwd);
+			SecureZeroMemory(&pwd, sizeof(pwd));
 
 			dataFileMan.VerifyPassword(passwordGuess);
 			CheckGlobalSettings();
@@ -25,19 +28,29 @@ namespace AppSecPolicy
 		}
 		~SecPolicy()
 		{
-			ApplyChanges(true);
-			PrintStats();
+			if (!justListing)
+			{
+				ApplyChanges(true);
+				if (listRules)
+				{
+					std::cout << '\n';
+					ListRules();
+				}
+
+				PrintStats();
+			}
+
+			else if (listRules)
+				ListRules();
 		}
 
-		void CreatePolicy(const std::string &path,
-			const SecOption &op, RuleType = RuleType::HASHRULE);
 		void CreatePolicy(const std::vector<std::string> &paths,
 			const SecOption &op, RuleType = RuleType::HASHRULE);
 		void TempRun(const std::string &path);
 		void TempRun(const std::string &dir, const std::string &exeFile);
-		void RemoveRules(const std::string &path);
 		void RemoveRules(std::vector<std::string> &paths);
 		void EnumLoadedDLLs(const std::string &exeFile);
+		void CheckRules();
 		void ListRules();
 
 	protected:
@@ -60,10 +73,11 @@ namespace AppSecPolicy
 		static moodycamel::ConcurrentQueue<DirInfo> dirItQueue;
 		static moodycamel::ConcurrentQueue<FileInfo> fileCheckQueue;
 		static moodycamel::ConcurrentQueue<RuleAction> ruleQueue;
+		static moodycamel::ConcurrentQueue<RuleData> ruleCheckQueue;
+		static moodycamel::ConcurrentQueue<std::string> ruleStringQueue;
 
 	private:
 		void CheckGlobalSettings();
-		bool SetPrivileges(const std::string&, bool);
 		inline void StartTimer() noexcept
 		{
 			startTime = std::chrono::high_resolution_clock::now();
@@ -74,6 +88,9 @@ namespace AppSecPolicy
 		void PrintStats() const;
 		void ApplyChanges(bool);
 
+		bool ruleCheck = false;
+		bool listRules = false;
+		bool justListing = true;
 		std::string programName;
 		std::string passwordGuess;
 		DataFileManager dataFileMan;

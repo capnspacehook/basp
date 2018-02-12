@@ -32,6 +32,17 @@ namespace AppSecPolicy
 			CloseHandle(policyFileHandle);
 		}
 
+		bool IsFirstTimeRun() const
+		{
+			return firstTimeRun;
+		}
+		bool AreRulesCreated()
+		{
+			auto foundPos = policyData->find('\n', KEY_SIZE + policyFileHeader.size());
+			bool rulesCreated = foundPos == policyData->size() - 1;
+			policyData.ProtectMemory(true);
+			return rulesCreated;
+		}
 		std::string GetGlobalSettings() const
 		{
 			if (passwordReset)
@@ -41,10 +52,19 @@ namespace AppSecPolicy
 				return globalPolicySettings;
 		}
 		std::string GetCurrentPolicySettings() const;
+		std::string GetRuleList()
+		{
+			std::string ruleList = *policyData;
+			policyData.ProtectMemory(true);
+			return ruleList;
+		}
+
+		static RuleData StringToRuleData(const std::string&);
+		static std::string RuleDataToString(const RuleData&);
 
 		void VerifyPassword(std::string&);
 		void CheckPassword(std::string&);
-		void SetNewPassword();
+		void SetNewPassword(std::string&);
 		RuleFindResult FindRule(SecOption, RuleType,
 			const std::string&, RuleData&) const;
 		std::vector<RuleData> FindRulesInDir(const std::string&) const;
@@ -64,10 +84,8 @@ namespace AppSecPolicy
 		
 		RuleFindResult FindUserRule(SecOption, RuleType, 
 			const std::string&, std::size_t&, bool&) const;
-		RuleData StringToRuleData(const std::string&) const;
-		std::string RuleDataToString(const RuleData&) const;
+		
 		void SortRules();
-
 		const unsigned iterations = 1000;	//iterations for PBKDF2
 		const unsigned TAG_SIZE = AES::BLOCKSIZE;
 		const unsigned KEY_SIZE = AES::MAX_KEYLENGTH;
@@ -91,6 +109,7 @@ namespace AppSecPolicy
 		std::vector<std::string> rulePaths;		//paths of created rules for searching
 		
 		bool rulesAdded = false;
+		bool firstTimeRun = false;
 		bool passwordReset = false;
 		bool policyDataModified = false;
 

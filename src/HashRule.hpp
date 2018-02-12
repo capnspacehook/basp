@@ -23,6 +23,7 @@ namespace AppSecPolicy
 		void SwitchRule(const uintmax_t&, RuleDataPtr&);
 		void RemoveRule(const std::string &guid,
 			SecOption policy) const;
+		void CheckRuleIntegrity(const RuleData&);
 
 		void swap(HashRule& other) noexcept
 		{
@@ -55,7 +56,7 @@ namespace AppSecPolicy
 		void HashDigests(const std::string &fileName);
 		inline void CreateGUID();
 		void WriteToRegistry(const std::string &fileName,
-			const SecOption &policy);
+			SecOption policy);
 		inline bool MakeGUID();
 		inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;
 

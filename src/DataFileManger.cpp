@@ -266,15 +266,23 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 
 	if (subDirSearchResult != userRulePaths.end() && !(path < *subDirSearchResult))
 	{
-		if (*subDirSearchResult != path)
+		bool sameParentDir = fs::path(*subDirSearchResult).parent_path() == fs::path(path).parent_path();
+
+		if (*subDirSearchResult != path && !sameParentDir)
 		{
 			nonExistingSubdir = true;
 			parentOp = static_cast<SecOption>(
 				userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
+		
+			foundRule = subDirSearchResult;
+			validRule = true;
 		}
 
-		foundRule = subDirSearchResult;
-		validRule = true;
+		else if (*subDirSearchResult == path)
+		{
+			foundRule = subDirSearchResult;
+			validRule = true;
+		}
 	}
 
 	if (validRule)
@@ -401,7 +409,7 @@ vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
 	return rulesInDir;
 }
 
-RuleData DataFileManager::StringToRuleData(const string& ruleStr) const
+RuleData DataFileManager::StringToRuleData(const string& ruleStr)
 {
 	string temp;
 	string hash;
@@ -440,7 +448,6 @@ RuleData DataFileManager::StringToRuleData(const string& ruleStr) const
 
 	hash.clear();
 	getline(iss, temp, '|');
-	temp.pop_back();
 	StringSource(temp, true,
 		new HexDecoder(new StringSink(hash)));
 
@@ -450,7 +457,7 @@ RuleData DataFileManager::StringToRuleData(const string& ruleStr) const
 	return ruleData;
 }
 
-string DataFileManager::RuleDataToString(const RuleData& ruleData) const
+string DataFileManager::RuleDataToString(const RuleData& ruleData)
 {
 	auto hashToStr =
 		[](const auto& hash)
@@ -470,7 +477,7 @@ string DataFileManager::RuleDataToString(const RuleData& ruleData) const
 		get<FILE_LOCATION>(ruleData) + '|' + get<RULE_GUID>(ruleData) + '|' +
 		get<FRIENDLY_NAME>(ruleData) + '|' + to_string(get<ITEM_SIZE>(ruleData)) + '|' + 
 		to_string(get<LAST_MODIFIED>(ruleData)) + '|' +
-		hashToStr(get<ITEM_DATA>(ruleData)) + '|' + hashToStr(get<SHA256_HASH>(ruleData)) + '\n';;
+		hashToStr(get<ITEM_DATA>(ruleData)) + '|' + hashToStr(get<SHA256_HASH>(ruleData)) + '\n';
 }
 
 void DataFileManager::SortRules()
@@ -766,7 +773,7 @@ void DataFileManager::WriteChanges()
 				return str1.substr(RULE_PATH_POS,
 					str1.find("|{") - 4)
 					< str2.substr(RULE_PATH_POS,
-					str2.find("|{") - 4);
+						str2.find("|{") - 4);
 			});
 	}
 
@@ -786,7 +793,10 @@ void DataFileManager::VerifyPassword(string& guessPwd)
 	if (fs::exists(policyFileName))
 		CheckPassword(guessPwd);
 	else
-		SetNewPassword();
+	{
+		firstTimeRun = true;
+		SetNewPassword(guessPwd);
+	}
 
 	cout << '\n';
 }
@@ -846,27 +856,38 @@ void DataFileManager::CheckPassword(string& guessPwd)
 	SecureZeroMemory(&guessPwd, sizeof(guessPwd));
 }
 
-void DataFileManager::SetNewPassword()
+void DataFileManager::SetNewPassword(string& guessPwd)
 {
-	string newPass1, newPass2;
-	bool passesMismatch = true;
-
-	do
+	string newPass1;
+	if (guessPwd.empty())
 	{
-		cout << "Enter your new password:\n";
-		GetPassword(newPass1);
+		string newPass2;
+		bool passesMismatch = true;
 
-		cout << "Enter it again:\n";
-		GetPassword(newPass2);
+		do
+		{
+			cout << "Enter your new password:\n";
+			GetPassword(newPass1);
 
-		if (newPass1 != newPass2)
-			cout << "Passwords do not match. Please enter again.\n";
-		else
-			passesMismatch = false;
-	} while (passesMismatch);
+			cout << "Enter it again:\n";
+			GetPassword(newPass2);
+
+			if (newPass1 != newPass2)
+				cout << "Passwords do not match. Please enter again.\n";
+			else
+				passesMismatch = false;
+		} while (passesMismatch);
+
+		SecureZeroMemory(&newPass2, sizeof(newPass2));
+	}
+
+	else
+	{
+		newPass1 = move(guessPwd);
+		SecureZeroMemory(&guessPwd, sizeof(guessPwd));
+	}
 
 	cout << "Computing new password hash...";
-	SecureZeroMemory(&newPass1, sizeof(newPass1));
 
 	AutoSeededRandomPool prng;
 	prng.GenerateBlock(*kdfSalt, KEY_SIZE);
@@ -876,13 +897,13 @@ void DataFileManager::SetNewPassword()
 		kdfHash->data(),
 		kdfHash->size(),
 		0,
-		(byte*)newPass2.data(),
-		newPass2.size(),
+		(byte*)newPass1.data(),
+		newPass1.size(),
 		kdfSalt->data(),
 		kdfSalt->size(),
 		iterations);
 
-	SecureZeroMemory(&newPass2, sizeof(newPass2));
+	SecureZeroMemory(&newPass1, sizeof(newPass1));
 
 	kdfHash.ProtectMemory(true);
 	kdfSalt.ProtectMemory(true);
@@ -943,9 +964,7 @@ void DataFileManager::ListRules() const
 
 	if (!sortedRules.empty())
 	{
-		cout << '\n';
 		unsigned index = 0;
-
 		if (sortedRules[0][0] == whiteList)
 		{
 			cout << "Allowed rules:\n";
@@ -963,10 +982,11 @@ void DataFileManager::ListRules() const
 					break;
 			}
 
-			cout << '\n';
+			if (sortedRules[index][0] == blackList)
+				cout << '\n';
 		}
 
-		if (sortedRules[0][0] == blackList)
+		if (sortedRules[index][0] == blackList)
 		{
 			cout << "Denied rules:\n";
 			for (index; index < sortedRules.size(); index++)

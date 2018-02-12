@@ -11,24 +11,24 @@ using namespace std;
 using namespace AppSecPolicy;
 
 void CheckElevated();
-bool DisablePrivilege(const string&);
+bool RemovePrivilege(const string&);
 
 int main(int argc, char *argv[])
 {
 	CheckElevated();
-	DisablePrivilege("SeCreateTokenPrivilege");
-	DisablePrivilege("SeDebugPrivilege");
-	DisablePrivilege("SeIncreaseQuotaPrivilege");
-	DisablePrivilege("SeLoadDriverPrivilege");
-	DisablePrivilege("SeRestorePrivilege");
-	DisablePrivilege("SeShutdownPrivilege");
-	DisablePrivilege("SeSystemEnvironmentPrivilege");
-	DisablePrivilege("SeSystemtimePrivilege");
-	DisablePrivilege("SeTcbPrivilege");
+	RemovePrivilege("SeCreateTokenPrivilege");
+	RemovePrivilege("SeDebugPrivilege");
+	RemovePrivilege("SeIncreaseQuotaPrivilege");
+	RemovePrivilege("SeLoadDriverPrivilege");
+	RemovePrivilege("SeRestorePrivilege");
+	RemovePrivilege("SeShutdownPrivilege");
+	RemovePrivilege("SeSystemEnvironmentPrivilege");
+	RemovePrivilege("SeSystemtimePrivilege");
+	RemovePrivilege("SeTcbPrivilege");
 
 	CliParser parser(argc, argv);
 
-	SecPolicy secPolicy(parser.password);
+	SecPolicy secPolicy(parser.password, parser.listRules);
 
 	if (parser.blacklisting)
 		secPolicy.CreatePolicy(parser.fileArgs, SecOption::BLACKLIST);
@@ -48,8 +48,8 @@ int main(int argc, char *argv[])
 	else if (!parser.tempAllowParentDir.empty())
 		secPolicy.TempRun(parser.parentDir, parser.tempAllowParentDir);
 
-	if (parser.listRules)
-		secPolicy.ListRules();
+	else if (parser.checkRules)
+		secPolicy.CheckRules();
 }
 
 void CheckElevated()
@@ -74,7 +74,7 @@ void CheckElevated()
 	}
 }
 
-bool DisablePrivilege(const string& privName)
+bool RemovePrivilege(const string& privName)
 {
 	HANDLE tokenH;
 	HANDLE localProc = GetCurrentProcess();
