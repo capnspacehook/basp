@@ -30,7 +30,7 @@ const string HashRule::fileProps[5] = {
 	"CompanyName" };
 
 //sets the 'subKey' parameter to the rule's guid
-void HashRule::CreateNewHashRule(RuleDataPtr& ruleData)
+void HashRule::CreateNewHashRule(RuleDataPtr &ruleData)
 {
 	string fileName = get<FILE_LOCATION>(*ruleData);
 
@@ -51,34 +51,30 @@ void HashRule::CreateNewHashRule(RuleDataPtr& ruleData)
 	SecPolicy::createdRules++;
 }
 
-void HashRule::SwitchRule(const uintmax_t& fileSize, RuleDataPtr& ruleData)
+void HashRule::SwitchRule(const uintmax_t &fileSize, RuleDataPtr &ruleData)
 {
 	using namespace winreg;
 
 	try
 	{
-		string ruleType;
-		string policyPath =
-			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
-
 		const SecOption originalOp = get<SEC_OPTION>(*ruleData);
 		SecOption swappedOp = static_cast<SecOption>(!static_cast<bool>(originalOp));
 
 		guid = get<RULE_GUID>(*ruleData);
 		get<SEC_OPTION>(*ruleData) = swappedOp;
 
-		if (originalOp == SecOption::BLACKLIST)
-			ruleType = "\\0\\Hashes\\";
-		else
-			ruleType = "\\262144\\Hashes\\";
-
-		policyPath += ruleType;
-		string rulePath = move(policyPath + guid);
+		string policyPath = [&]()
+		{
+			if (originalOp == SecOption::BLACKLIST)
+				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes\)" + guid;
+			else
+				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes\)" + guid;
+		} ();
 
 		//get values of already created rule
 		RegKey hashRuleKey(
 			HKEY_LOCAL_MACHINE,
-			rulePath,
+			policyPath,
 			KEY_READ
 		);
 
@@ -93,7 +89,7 @@ void HashRule::SwitchRule(const uintmax_t& fileSize, RuleDataPtr& ruleData)
 			hashRuleKey.Close();
 			hashRuleKey.Open(
 				HKEY_LOCAL_MACHINE,
-				rulePath + "\\SHA256",
+				policyPath + "\\SHA256",
 				KEY_READ);
 
 			sha256Hash = hashRuleKey.GetBinaryValue("ItemData");
@@ -124,16 +120,13 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 
 	try
 	{
-		string ruleType;
-		string policyPath =
-			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
-
-		if (policy == SecOption::BLACKLIST)
-			ruleType = "\\0\\Hashes\\";
-		else
-			ruleType = "\\262144\\Hashes\\";
-
-		policyPath += ruleType;
+		string policyPath = [&]()
+		{
+			if (policy == SecOption::BLACKLIST)
+				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes\)";
+			else
+				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes\)";
+		} ();
 
 		RegKey tempKey(
 			HKEY_LOCAL_MACHINE,
@@ -156,7 +149,7 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 	}
 }
 
-bool HashRule::CheckIfRuleOutdated(const uintmax_t& fileSize, 
+bool HashRule::CheckIfRuleOutdated(const uintmax_t &fileSize, 
 	RuleDataPtr& ruleData, bool updatingRule)
 {
 	bool fileHashed = false;
@@ -186,7 +179,7 @@ bool HashRule::CheckIfRuleOutdated(const uintmax_t& fileSize,
 	return fileChanged;
 }
 
-void HashRule::UpdateRule(const uintmax_t& fileSize, RuleData& ruleData, bool fileHashed)
+void HashRule::UpdateRule(const uintmax_t &fileSize, RuleData &ruleData, bool fileHashed)
 {
 	itemSize = fileSize;
 	guid = get<RULE_GUID>(ruleData);
@@ -209,26 +202,22 @@ void HashRule::UpdateRule(const uintmax_t& fileSize, RuleData& ruleData, bool fi
 	SecPolicy::updatedRules++;
 }
 
-void HashRule::CheckRuleIntegrity(const RuleData& ruleData)
+void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 {
 	using namespace winreg;
 	
 	bool ruleModified = false;
 	auto policy = get<SEC_OPTION>(ruleData);
-	string policyPath = "SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
-
-	string ruleType = [&policy]()
+	string policyPath = [&]()
 	{
 		if (policy == SecOption::BLACKLIST)
-			return "\\0\\Hashes\\";
+			return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes\)" + get<RULE_GUID>(ruleData);
 		else
-			return "\\262144\\Hashes\\";
+			return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes\)" + get<RULE_GUID>(ruleData);
 	} ();
 
-	policyPath += ruleType + get<RULE_GUID>(ruleData);
-
 	RegKey hashRuleKey;
-	string ruleName = get<FILE_LOCATION>(ruleData);
+	const string ruleName = get<FILE_LOCATION>(ruleData);
 
 	try
 	{
@@ -403,37 +392,30 @@ void HashRule::EnumFileVersion(const string &fileName)
 
 	if (verSize != NULL)
 	{
-		LPSTR verData = new char[verSize];
+		auto verData = make_unique<char*>(new char[verSize]);
 
-		if (GetFileVersionInfo(szVersionFile, verHandle, verSize, verData))
+		if (GetFileVersionInfo(szVersionFile, verHandle, verSize, *verData))
 		{
-			if (VerQueryValue(verData, "\\", (VOID FAR* FAR*)&lpBuffer, &size))
+			if (VerQueryValue(*verData, "\\", (VOID FAR* FAR*)&lpBuffer, &size))
 			{
 				if (size)
 				{
 					VS_FIXEDFILEINFO *verInfo = (VS_FIXEDFILEINFO *)lpBuffer;
 					if (verInfo->dwSignature == 0xfeef04bd)
 					{
-						char s[50];
 						// Doesn't matter if you are on 32 bit or 64 bit,
 						// DWORD is always 32 bits, so first two revision numbers
 						// come from dwFileVersionMS, last two come from dwFileVersionLS
-						snprintf(s, 50, "%d.%d.%d.%d",
-							(verInfo->dwFileVersionMS >> 16) & 0xffff,
-							(verInfo->dwFileVersionMS >> 0) & 0xffff,
-							(verInfo->dwFileVersionLS >> 16) & 0xffff,
-							(verInfo->dwFileVersionLS >> 0) & 0xffff
-						);
-
-						fileVersion = s;
-						fileVersion = " (" + fileVersion + ")";
+						fileVersion = " (" +
+							to_string((verInfo->dwFileVersionMS >> 16) & 0xffff) + '.' +
+							to_string((verInfo->dwFileVersionMS >> 0) & 0xffff) + '.' +
+							to_string((verInfo->dwFileVersionLS >> 16) & 0xffff) + '.' +
+							to_string((verInfo->dwFileVersionLS >> 0) & 0xffff) + ")";
 					}
 				}
 			}
 		}
-		delete[] verData;
 	}
-
 }
 
 //Generates FriendlyName, which is a collection of metadata from the file
@@ -563,7 +545,7 @@ inline vector<BYTE> HashRule::convertStrToByte(string &str) noexcept
 		if (str[i + 1] >= '0' && str[i + 1] <= '9') str[i + 1] -= '0';
 		else str[i + 1] -= 55;
 
-		vec.push_back((str[i] << 4) | str[i + 1]);
+		vec.emplace_back((str[i] << 4) | str[i + 1]);
 	}
 	return vec;
 }
@@ -615,18 +597,13 @@ void HashRule::WriteToRegistry(const string &fileName, SecOption policy)
 
 	try
 	{
-		string policyPath =
-			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers";
-
-		string ruleType = [&policy]()
+		string policyPath = [&]()
 		{
 			if (policy == SecOption::BLACKLIST)
-				return "\\0\\Hashes\\";
+				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes\)" + guid;
 			else
-				return "\\262144\\Hashes\\";
+				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes\)" + guid;
 		} ();
-
-		policyPath += ruleType + guid;
 
 		RegKey hashRuleKey(
 			HKEY_LOCAL_MACHINE,

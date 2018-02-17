@@ -1,5 +1,4 @@
 #include "AppSecPolicy.hpp"
-#include "Windows.h"
 #pragma once
 
 namespace AppSecPolicy
@@ -7,15 +6,9 @@ namespace AppSecPolicy
 	class HashRule
 	{
 	public:
-		HashRule() {};
-		HashRule(HashRule &other) noexcept
-		{
-			other.swap(*this);
-		}
-		HashRule(HashRule &&other) noexcept
-		{
-			other.swap(*this);
-		}
+		HashRule() = default;
+		HashRule(HashRule&) = default;
+		HashRule(HashRule&&) = default;
 		
 		void CreateNewHashRule(RuleDataPtr&);
 		bool CheckIfRuleOutdated(const uintmax_t&, 
@@ -25,28 +18,8 @@ namespace AppSecPolicy
 			SecOption policy) const;
 		void CheckRuleIntegrity(const RuleData&);
 
-		void swap(HashRule& other) noexcept
-		{
-			using std::swap;
-			swap(this->guid, other.guid);
-			swap(this->description, other.description);
-			swap(this->fileVersion, other.fileVersion);
-			swap(this->friendlyName, other.friendlyName);
-			swap(this->itemData, other.itemData);
-			swap(this->itemSize, other.itemSize);
-			swap(this->lastModified, other.lastModified);
-			swap(this->sha256Hash, other.sha256Hash);
-		}
-		HashRule& operator=(HashRule rhs) noexcept
-		{
-			rhs.swap(*this);
-			return *this;
-		}
-		HashRule& operator=(HashRule&& rhs) noexcept
-		{
-			rhs.swap(*this);
-			return *this;
-		}
+		HashRule& operator=(HashRule&) = default;
+		HashRule& operator=(HashRule&&) = default;
 
 	private:
 		void UpdateRule(const uintmax_t&, RuleData&, bool);

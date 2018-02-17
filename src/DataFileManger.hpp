@@ -18,13 +18,11 @@ namespace AppSecPolicy
 	class DataFileManager
 	{
 	public:
-		DataFileManager()
+		explicit DataFileManager(std::string &prgmName) : policyFileName(prgmName)
 		{
-			kdfSalt.SetWipeOnExit(false);
-			kdfHash.SetWipeOnExit(false);
-			kdfSalt.assign(new SecByteBlock(KEY_SIZE));
-			kdfHash.assign(new SecByteBlock(KEY_SIZE * 2));
-			policyData.assign(new std::string);
+			kdfSalt.assign(SecByteBlock(KEY_SIZE));
+			kdfHash.assign(SecByteBlock(KEY_SIZE * 2));
+			policyData.assign(std::string());
 		}
 		~DataFileManager()
 		{	
@@ -74,7 +72,7 @@ namespace AppSecPolicy
 		void UpdateEntries(SecOption, const std::vector<RuleDataPtr>&);
 		void RemoveDeletedFiles(const std::vector<RuleData>&);
 		void RemoveOldEntries();
-		void ListRules() const;
+		void ListRules(bool listAll) const;
 		void WriteChanges();
 
 	private:

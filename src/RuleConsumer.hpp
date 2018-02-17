@@ -43,7 +43,6 @@ namespace AppSecPolicy
 		
 			SecPolicy::doneConsumers++;
 		}
-
 		void CheckRules()
 		{
 			RuleData ruleData;

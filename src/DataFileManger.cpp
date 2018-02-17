@@ -62,8 +62,6 @@ bool DataFileManager::OpenPolicyFile()
 			nullptr);
 
 		*policyData = temp;
-		temp.clear();
-
 		istringstream iss(*policyData);
 
 		//skip header 
@@ -151,7 +149,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 		string policySettings;
 		RegKey policyKey(
 			HKEY_LOCAL_MACHINE,
-			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
+			R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers)",
 			KEY_READ | KEY_WRITE);
 		
 		auto values = policyKey.EnumValues();
@@ -191,11 +189,11 @@ string DataFileManager::GetCurrentPolicySettings() const
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << '\n';
+		cerr << e.what() << '\n';
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << '\n';
+		cerr << e.what() << '\n';
 	}
 }
 
@@ -935,46 +933,93 @@ void DataFileManager::GetPassword(string &password)
 	SetConsoleMode(hStdin, mode);
 }
 
-void DataFileManager::ListRules() const
+void DataFileManager::ListRules(bool listAll) const
 {
-	const char removed = static_cast<char>(SecOption::REMOVED) + '0';
-	const char whiteList = static_cast<char>(SecOption::WHITELIST) + '0';
-	const char blackList = static_cast<char>(SecOption::BLACKLIST) + '0';
-
-	auto sortedRules = userRuleInfo;
-	sort(sortedRules.begin(), sortedRules.end(), 
-		[&removed](const string &str1, const string &str2)
+	constexpr char removed = static_cast<char>(SecOption::REMOVED) + '0';
+	constexpr char whiteList = static_cast<char>(SecOption::WHITELIST) + '0';
+	constexpr char blackList = static_cast<char>(SecOption::BLACKLIST) + '0';
+	
+	auto sortedRules = [&]()
+	{
+		if (listAll)
 		{
-			if ((str1[SEC_OPTION] != removed && str2[SEC_OPTION] != removed)
-				&& (str1[SEC_OPTION] != str2[SEC_OPTION]))
-				return str1[SEC_OPTION] > str2[SEC_OPTION];
+			auto tempVec = ruleInfo;
+			sort(tempVec.begin(), tempVec.end(),
+				[&removed](const string &str1, const string &str2)
+				{
+					if ((str1[SEC_OPTION] != removed && str2[SEC_OPTION] != removed)
+						&& (str1[SEC_OPTION] != str2[SEC_OPTION]))
+						return str1[SEC_OPTION] > str2[SEC_OPTION];
 
-			fs::path path1(str1.substr(RULE_PATH_POS,
-				str1.length()));
+					fs::path path1(str1.substr(
+						RULE_PATH_POS, str1.find("|{") - 4));
 
-			fs::path path2(str2.substr(RULE_PATH_POS,
-				str2.length()));
+					fs::path path2(str2.substr(
+						RULE_PATH_POS, str2.find("|{") - 4));
 
-			if (path1.parent_path() != path2.parent_path())
-				return path1.parent_path() < path2.parent_path();
+					if (path1.parent_path() != path2.parent_path())
+						return path1.parent_path() < path2.parent_path();
 
-			else 
-				return path1.filename() < path2.filename();
-		});
+					else
+						return path1.filename() < path2.filename();
+				});
+
+			return tempVec;
+		}
+
+		else
+		{
+			auto tempVec = userRuleInfo;
+			sort(tempVec.begin(), tempVec.end(),
+				[&removed](const string &str1, const string &str2)
+				{
+					if ((str1[SEC_OPTION] != removed && str2[SEC_OPTION] != removed)
+						&& (str1[SEC_OPTION] != str2[SEC_OPTION]))
+						return str1[SEC_OPTION] > str2[SEC_OPTION];
+
+					fs::path path1(str1.substr(RULE_PATH_POS,
+						str1.length()));
+
+					fs::path path2(str2.substr(RULE_PATH_POS,
+						str2.length()));
+
+					if (path1.parent_path() != path2.parent_path())
+						return path1.parent_path() < path2.parent_path();
+
+					else
+						return path1.filename() < path2.filename();
+				});
+
+			return tempVec;
+		}
+	} ();
 
 	if (!sortedRules.empty())
 	{
 		unsigned index = 0;
+		int numWhitelistingRules = 0;
+		
 		if (sortedRules[0][0] == whiteList)
 		{
 			cout << "Allowed rules:\n";
 			for (index; index < sortedRules.size(); index++)
 			{
 				if (sortedRules[index][SEC_OPTION] == whiteList)
-					cout << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length()) << '\n';
+				{
+					if (listAll)
+					{
+						cout << sortedRules[index].substr(
+							RULE_PATH_POS, sortedRules[index].find("|{") - 4) << '\n';
+					}
 
-				else if (sortedRules[index][SEC_OPTION] == removed)
+					else
+					{
+						cout << sortedRules[index].substr(RULE_PATH_POS,
+							sortedRules[index].length()) << '\n';
+					}
+				}
+
+				else if (!listAll && sortedRules[index][SEC_OPTION] == removed)
 					cout << "Except: " << sortedRules[index].substr(RULE_PATH_POS,
 						sortedRules[index].length()) << '\n';
 
@@ -982,20 +1027,34 @@ void DataFileManager::ListRules() const
 					break;
 			}
 
-			if (sortedRules[index][0] == blackList)
+			if (index < sortedRules.size() && sortedRules[index][0] == blackList)
+			{
 				cout << '\n';
+				numWhitelistingRules = index;
+			}
 		}
 
-		if (sortedRules[index][0] == blackList)
+		if (numWhitelistingRules != sortedRules.size())
 		{
 			cout << "Denied rules:\n";
 			for (index; index < sortedRules.size(); index++)
 			{
 				if (sortedRules[index][SEC_OPTION] == blackList)
-					cout << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length()) << '\n';
+				{
+					if (listAll)
+					{
+						cout << sortedRules[index].substr(
+							RULE_PATH_POS, sortedRules[index].find("|{") - 4) << '\n';
+					}
 
-				else if (sortedRules[index][SEC_OPTION] == removed)
+					else
+					{
+						cout << sortedRules[index].substr(RULE_PATH_POS,
+							sortedRules[index].length()) << '\n';
+					}
+				}
+
+				else if (!listAll && sortedRules[index][SEC_OPTION] == removed)
 					cout << "Except: " << sortedRules[index].substr(RULE_PATH_POS,
 						sortedRules[index].length()) << '\n';
 
@@ -1003,8 +1062,21 @@ void DataFileManager::ListRules() const
 					break;
 			}
 		}
+
+		if (listAll)
+		{
+			cout << '\n';
+
+			if (numWhitelistingRules > 0)
+				cout << "Number of allowed rules: " << numWhitelistingRules << '\n';
+
+			if (index - numWhitelistingRules > 0)
+				cout << "Number of denied rules: " << index - numWhitelistingRules << '\n';
+
+			cout << "Total number of rules: " << index << '\n';
+		}
 	}
 
 	else
-		cout << "No rules have been created\n";
+		cout << "Cannot list rules, no rules have been created\n";
 }

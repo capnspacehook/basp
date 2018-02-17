@@ -13,16 +13,16 @@ namespace fs = std::experimental::filesystem;
 
 namespace AppSecPolicy
 {
+	using TimeDiff = std::common_type_t<std::chrono::nanoseconds, std::chrono::nanoseconds>;
+
 	class SecPolicy
 	{
 	public:
-		SecPolicy(std::string& pwd, bool lstRules)
+		explicit SecPolicy(std::string &prgmName, std::string& pwd, bool lstRules, bool lstAll)
+			: listRules(lstRules), listAllRules(lstAll), dataFileMan(prgmName)
 		{
-			listRules = lstRules;
-			passwordGuess = std::move(pwd);
-			SecureZeroMemory(&pwd, sizeof(pwd));
-
-			dataFileMan.VerifyPassword(passwordGuess);
+			dataFileMan.VerifyPassword(pwd);
+			
 			CheckGlobalSettings();
 			StartTimer();
 		}
@@ -31,16 +31,18 @@ namespace AppSecPolicy
 			if (!justListing)
 			{
 				ApplyChanges(true);
-				if (listRules)
+				const auto diff = std::chrono::high_resolution_clock::now() - startTime;
+
+				if (listRules || listAllRules)
 				{
 					std::cout << '\n';
 					ListRules();
 				}
 
-				PrintStats();
+				PrintStats(diff);
 			}
 
-			else if (listRules)
+			else if (listRules || listAllRules)
 				ListRules();
 		}
 
@@ -49,15 +51,13 @@ namespace AppSecPolicy
 		void TempRun(const std::string &path);
 		void TempRun(const std::string &dir, const std::string &exeFile);
 		void RemoveRules(std::vector<std::string> &paths);
-		void EnumLoadedDLLs(const std::string &exeFile);
 		void CheckRules();
-		void ListRules();
+		void ListRules() const;
 
 	protected:
 		friend class HashRule;
 		friend class RuleProducer;
 		friend class RuleConsumer;
-
 
 		//statistical variables
 		static std::atomic_uintmax_t createdRules;
@@ -85,14 +85,13 @@ namespace AppSecPolicy
 		void StartProcessing(const std::string&);
 		void DeleteRules(const std::vector<std::string>&);
 		void ModifyRules();
-		void PrintStats() const;
+		void PrintStats(TimeDiff) const;
 		void ApplyChanges(bool);
 
 		bool ruleCheck = false;
 		bool listRules = false;
 		bool justListing = true;
-		std::string programName;
-		std::string passwordGuess;
+		bool listAllRules = false;
 		DataFileManager dataFileMan;
 
 		SecOption secOption;
@@ -109,7 +108,7 @@ namespace AppSecPolicy
 		std::vector<std::thread> ruleProducers;
 		std::vector<std::thread> ruleConsumers;
 		const unsigned maxThreads = std::thread::hardware_concurrency();
-		const unsigned initThreadCnt = maxThreads / 2;
+		unsigned initThreadCnt = maxThreads / 2;
 
 		std::vector<UserRule> enteredRules;
 		

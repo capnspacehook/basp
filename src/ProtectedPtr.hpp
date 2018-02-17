@@ -16,18 +16,20 @@ namespace Protected_Ptr
 	class PrimitiveSerializer
 	{
 	public:
-		//return size of data
+
 		std::size_t getSize(const T& obj) const { return sizeof(obj); }
 		//return reference to raw data
 		T* getRawData(T& obj) const { return &obj; }
 		//convert data into byte array
-		byte* serialize(T& obj) const
+		std::unique_ptr<byte*> serialize(T& obj) const
 		{
-			const size_t size = getSize(obj);
-			byte* out = new byte[size];
-			memcpy(out, getRawData(obj), size);
+			const auto size = getSize(obj);
+			auto out = std::make_unique<byte*>(new byte[size]);
+			std::memcpy(*out, getRawData(obj), size);
 			return out;
 		}
+
+		bool overwriteOnExit = true;
 	};
 
 	class StringSerializer
@@ -35,13 +37,15 @@ namespace Protected_Ptr
 	public:
 		std::size_t getSize(const std::string& str) const { return sizeof(str); }
 		std::string* getRawData(std::string& str) const { return &str; }	
-		byte* serialize(std::string& str) const
+		std::unique_ptr<byte*> serialize(std::string& str) const
 		{
-			const std::size_t size = str.size();
-			auto out = new byte[size];
-			memcpy(out, str.c_str(), size);
+			const auto size = str.size();
+			auto out = std::make_unique<byte*>(new byte[size]);
+			std::memcpy(*out, str.c_str(), size);
 			return out;
 		}
+
+		bool overwriteOnExit = true;
 	};
 
 	class SecByteBlockSerializer
@@ -49,25 +53,21 @@ namespace Protected_Ptr
 	public:
 		std::size_t getSize(const CryptoPP::SecByteBlock& blk) const { return blk.size(); }
 		byte* getRawData(CryptoPP::SecByteBlock& blk) const { return blk.data(); }
-		byte* serialize(CryptoPP::SecByteBlock& blk) const
+		std::unique_ptr<byte*> serialize(CryptoPP::SecByteBlock& blk) const
 		{
-			return getRawData(blk);
+			return std::make_unique<byte*>(getRawData(blk));
 		}
+
+		bool overwriteOnExit = false;
 	};
 
 	template <class T, class S = PrimitiveSerializer<T>>
 	class ProtectedPtr
 	{
 	public:
-		explicit ProtectedPtr(bool wipeOnExit = true) noexcept
-			: protectedData(nullptr), overwriteOnExit(wipeOnExit) {};
-		explicit ProtectedPtr(T *obj, bool wipeOnExit = true)
-			: overwriteOnExit(wipeOnExit)
-		{
-			assign(obj);
-			ProtectMemory(true);
-		}
-		explicit ProtectedPtr(ProtectedPtr& rhs) : protectedData(nullptr)
+		ProtectedPtr() = default;
+		explicit ProtectedPtr(T &obj) { assign(obj); }
+		ProtectedPtr(ProtectedPtr &rhs) noexcept : protectedData(nullptr)
 		{
 			//make sure data is encrypted
 			ProtectMemory(true);
@@ -75,7 +75,7 @@ namespace Protected_Ptr
 
 			rhs.swap(*this);
 		}
-		explicit ProtectedPtr(ProtectedPtr&& rhs) : protectedData(nullptr) noexcept
+		ProtectedPtr(ProtectedPtr &&rhs) noexcept : protectedData(nullptr)
 		{
 			//make sure data is encrypted
 			ProtectMemory(true);
@@ -89,52 +89,54 @@ namespace Protected_Ptr
 			SecureWipeData();
 		}
 
-		void SetWipeOnExit(bool wipe) noexcept { overwriteOnExit = wipe; }
-		bool IsProtected() const { return isEncrypted };
+		bool IsProtected() const noexcept { return isEncrypted };
 		void ProtectMemory(bool encrypt)
 		{
-			size_t mod;
-			size_t dataBlockSize;
-			size_t dataSize = size();
+			if (protectedData)
+			{ 
+				size_t mod;
+				size_t dataBlockSize;
+				size_t dataSize = size();
 
-			if (dataSize > 0)
-			{
-				//CryptProtectMemory requires data to be a multiple of its block size
-				mod = dataSize % CRYPTPROTECTMEMORY_BLOCK_SIZE;
-
-				if(mod != 0)
-					dataBlockSize = dataSize + (CRYPTPROTECTMEMORY_BLOCK_SIZE - mod);
-				
-				else
-					dataBlockSize = dataSize;
-
-				if (encrypt && !isEncrypted)
+				if (dataSize > 0)
 				{
-					isEncrypted = true;
-					if (!CryptProtectMemory(getRawPtr(), dataBlockSize,
-						CRYPTPROTECTMEMORY_SAME_PROCESS))
-					{
-						cerr << "CryptProtectMemory failed: " << GetLastError() << '\n';
-					}
-				}
-				else if (!encrypt && isEncrypted)
-				{
-					isEncrypted = false;
-					if (!CryptUnprotectMemory(getRawPtr(), dataBlockSize,
-						CRYPTPROTECTMEMORY_SAME_PROCESS))
-					{
-						cerr << "CryptProtectMemory failed: " << GetLastError() << '\n';
-					}
-				}
+					//CryptProtectMemory requires data to be a multiple of its block size
+					mod = dataSize % CRYPTPROTECTMEMORY_BLOCK_SIZE;
 
-				SecureZeroMemory(&mod, sizeof(mod));
-				SecureZeroMemory(&dataSize, sizeof(dataSize));
-				SecureZeroMemory(&dataBlockSize, sizeof(dataBlockSize));
+					if (mod != 0)
+						dataBlockSize = dataSize + (CRYPTPROTECTMEMORY_BLOCK_SIZE - mod);
+
+					else
+						dataBlockSize = dataSize;
+
+					if (encrypt && !isEncrypted)
+					{
+						isEncrypted = true;
+						if (!CryptProtectMemory(getRawPtr(), dataBlockSize,
+							CRYPTPROTECTMEMORY_SAME_PROCESS))
+						{
+							cerr << "CryptProtectMemory failed: " << GetLastError() << '\n';
+						}
+					}
+					else if (!encrypt && isEncrypted)
+					{
+						isEncrypted = false;
+						if (!CryptUnprotectMemory(getRawPtr(), dataBlockSize,
+							CRYPTPROTECTMEMORY_SAME_PROCESS))
+						{
+							cerr << "CryptProtectMemory failed: " << GetLastError() << '\n';
+						}
+					}
+
+					SecureZeroMemory(&mod, sizeof(mod));
+					SecureZeroMemory(&dataSize, sizeof(dataSize));
+					SecureZeroMemory(&dataBlockSize, sizeof(dataBlockSize));
+				}
 			}
 		}
 		void SecureWipeData()
 		{
-			if (overwriteOnExit)
+			if (serializer.overwriteOnExit)
 				SecureZeroMemory(getRawPtr(), size());
 		}
 
@@ -168,7 +170,7 @@ namespace Protected_Ptr
 			return protectedData.operator->();
 		}
 
-		ProtectedPtr& operator=(ProtectedPtr rhs)
+		ProtectedPtr& operator=(ProtectedPtr rhs) noexcept
 		{
 			//make sure data is encrypted
 			ProtectMemory(true);
@@ -177,7 +179,7 @@ namespace Protected_Ptr
 			rhs.swap(*this);
 			return *this;
 		}
-		ProtectedPtr& operator=(ProtectedPtr&& rhs) noexcept
+		ProtectedPtr& operator=(ProtectedPtr &&rhs) noexcept
 		{
 			//make sure data is encrypted
 			ProtectMemory(true);
@@ -188,16 +190,16 @@ namespace Protected_Ptr
 		}
 		
 		//constant time comparison 
-		bool operator==(ProtectedPtr& rhs)
+		bool operator==(ProtectedPtr &rhs)
 		{
 			if (serializer.size() != rhs.serializer.size())
 				return false;
 
-			volatile auto thisData = std::make_unique<byte*>(serializeData());
+			volatile auto thisData = serializeData();
 			ProtectMemory(true);
 
-			volatile auto otherData = std::make_unique<byte*>(rhs.serializeData());
-			other.ProtectMemory(true);
+			volatile auto otherData = rhs.serializeData();
+			rhs.ProtectMemory(true);
 
 			volatile byte result = 0;
 			for (int i = 0; i < sizeof(*protectedData); i++)
@@ -210,7 +212,7 @@ namespace Protected_Ptr
 
 			return result == 0;
 		}
-		bool operator!=(ProtectedPtr& rhs)
+		bool operator!=(ProtectedPtr &rhs)
 		{
 			return !(*this == rhs);
 		}
@@ -219,7 +221,7 @@ namespace Protected_Ptr
 
 		T& get() { return this->operator*(); }
 		const T& data() const { return this->operator*(); }
-		void assign(T *obj)
+		void assign(T &obj)
 		{
 			//if protectedData is already pointing to something,
 			//securely overwrite and delete it
@@ -232,16 +234,16 @@ namespace Protected_Ptr
 
 			//point to copy of data, encrypt it, and overwrite
 			//original unencrypted data
-			protectedData = std::make_unique<T>(*obj);
+			protectedData = std::make_unique<T>(obj);
 			ProtectMemory(true);
-			SecureZeroMemory(obj, sizeof(obj));
+			SecureZeroMemory(&obj, sizeof(obj));
 		}
 		bool empty() const { return (bool)*this; }
 
 	private:
 		//returns reference to data pointed to
 		void* getRawPtr() { return serializer.getRawData(*protectedData); }
-		byte* serializeData()
+		std::unique_ptr<byte*> serializeData()
 		{
 			ProtectMemory(false);
 			return serializer.serialize(*protectedData);
@@ -251,7 +253,6 @@ namespace Protected_Ptr
 		S serializer;
 		std::unique_ptr<T> protectedData;
 		bool isEncrypted = false;
-		bool overwriteOnExit;
 	};
 
 	template <class T, class S = PrimitiveSerializer<T>>

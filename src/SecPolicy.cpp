@@ -40,15 +40,11 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	secOption = op;
 	ruleType = rType;
 
-	string lowerPath;
 	for (const auto &path : paths)
 	{
-		transform(path.begin(), path.end(),
-			back_inserter(lowerPath), tolower);
-
 		enteredRules.emplace_back(
-			secOption, ruleType, lowerPath);
-		StartProcessing(lowerPath);
+			secOption, ruleType, path);
+		StartProcessing(path);
 	}
 }
 
@@ -59,10 +55,10 @@ void SecPolicy::TempRun(const string &path)
 	{
 		justListing = false;
 		tempRuleCreation = true;
-		fs::path file = fs::path(path);
+		auto file = fs::path(path);
 		file.make_preferred();
 
-		const uintmax_t size = fs::file_size(file);
+		const auto size = fs::file_size(file);
 		if (size > 0)
 		{
 			//create temporary hash rule
@@ -140,7 +136,7 @@ void SecPolicy::TempRun(const string &path)
 			else if (result == RuleFindResult::EXACT_MATCH)
 			{
 				switchedRules++;
-				get<SEC_OPTION>(*tempRuleData) = SecOption::BLACKLIST;
+				get<SEC_OPTION>(*tempRuleData) = SecOption::WHITELIST;
 				tempRule.SwitchRule(size, tempRuleData);
 				cout << "Rule switched back to deny mode.\n";
 			}
@@ -269,75 +265,10 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 	DeleteRules(paths);
 }
 
-void SecPolicy::EnumLoadedDLLs(const string &exeFile)
-{
-	STARTUPINFO si;
-	PROCESS_INFORMATION pi;
-	DEBUG_EVENT debugEvent;
-	fs::path exePath(exeFile);
-
-	SecureZeroMemory(&si, sizeof(si));
-	SecureZeroMemory(&pi, sizeof(pi));
-
-	// Create target process
-	si.cb = sizeof(si);
-	bool procCreated = CreateProcess(
-		nullptr,
-		(char*)exeFile.c_str(),
-		nullptr,
-		nullptr,
-		TRUE,
-		DEBUG_PROCESS,
-		NULL,
-		(char*)exePath.parent_path().string().c_str(),
-		&si,
-		&pi);
-
-	if (!procCreated)
-	{
-		cerr << "CreateProcess error: " << GetLastError() << '\n';
-		return;
-	}
-
-	DebugSetProcessKillOnExit(TRUE);
-	DebugActiveProcess(pi.dwProcessId);
-
-	char dllPath[MAX_PATH];
-	while (true)
-	{
-		if (!WaitForDebugEvent(&debugEvent, dllWaitSecs * 1000))
-			break;
-
-		if (debugEvent.dwDebugEventCode == LOAD_DLL_DEBUG_EVENT)
-		{
-			GetFinalPathNameByHandle(
-				debugEvent.u.LoadDll.hFile, dllPath, MAX_PATH, FILE_NAME_OPENED);
-
-			cout << "New DLL found: " << dllPath << '\n';
-
-			CloseHandle(debugEvent.u.LoadDll.hFile);
-		}
-		else if (debugEvent.dwDebugEventCode == EXCEPTION_DEBUG_EVENT)
-			if (debugEvent.u.Exception.ExceptionRecord.ExceptionFlags != 0)
-			{
-				cerr << "Fatal exception thrown" << '\n';
-				break;
-			}
-
-		ContinueDebugEvent(debugEvent.dwProcessId,
-			debugEvent.dwThreadId,
-			DBG_CONTINUE);
-	}
-
-	DebugActiveProcessStop(pi.dwProcessId);
-	TerminateProcess(pi.hProcess, 0);
-
-	CloseHandle(pi.hProcess);
-	CloseHandle(pi.hThread);
-}
-
 void SecPolicy::CheckRules()
 {
+	using namespace winreg;
+
 	ruleCheck = true;
 	justListing = false;
 
@@ -361,6 +292,11 @@ void SecPolicy::CheckRules()
 
 	while (getline(ruleStrings, temp))
 		ruleStringQueue.enqueue(move(temp));
+	
+	/*RegKey policyKey(
+		HKEY_LOCAL_MACHINE,
+		"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
+		KEY_READ | KEY_WRITE);*/
 
 	for (int i = 0; i < initThreadCnt; i++)
 	{
@@ -389,9 +325,9 @@ void SecPolicy::CheckRules()
 		cout << "\nFinished checking rules. Changed rules are now corrected";
 }
 
-void SecPolicy::ListRules()
+void SecPolicy::ListRules() const
 {
-	dataFileMan.ListRules();
+	dataFileMan.ListRules(listAllRules);
 }
 
 //makes sure all the nessesary settings are in place to apply a SRP policy,
@@ -438,6 +374,7 @@ void SecPolicy::CheckGlobalSettings()
 				static_cast<int>(globalSettings[AUTHENTICODE_ENABLED] - '0'));
 
 			int defaultLevel = static_cast<int>(globalSettings[DEFAULT_LEVEL] - '0');
+			
 			if (defaultLevel == 1)
 				defaultLevel = 262144;
 
@@ -471,25 +408,20 @@ void SecPolicy::StartProcessing(const string &fileName)
 		fs::path initialFile(fileName);
 		initialFile.make_preferred();
 
-		string action;
 		uintmax_t fileSize;
+		string action = [=]()
+		{
+			if (static_cast<bool>(secOption))
+				return "Whitelisting";
+
+			else
+				return "Blacklisting";
+		} ();
 
 		if (fs::is_directory(initialFile))
 		{
-			if (tempRuleCreation)
-			{
-				cout << "Temporaily whitelisting files in "
-					<< initialFile.string() << "...";
-			}
-
-			else
-			{
-				((bool)secOption) ? action = "Whitelisting"
-					: action = "Blacklisting";
-
-				cout << action << " files in "
-					<< initialFile.string() << "...";
-			}
+			cout << action << " files in "
+				<< initialFile.string() << "...";
 
 			dirItQueue.enqueue(make_pair(initialFile, fileSize));
 
@@ -512,16 +444,24 @@ void SecPolicy::StartProcessing(const string &fileName)
 
 			cout << "done" << '\n';
 		}
+
 		else
 		{
 			fileSize = fs::file_size(initialFile);
 			if (fileSize && fs::is_regular_file(initialFile))
 			{
-				((bool)secOption) ? action = "Whitelisting"
-					: action = "Blacklisting";
-
 				cout << action << " "
-					<< initialFile.string();
+					<< initialFile.string() << "...";
+
+				initThreadCnt = 1;
+				RuleProducer ruleProducer;
+				RuleConsumer ruleConsumer;
+
+				ruleProducer.ProcessFile(initialFile, fileSize);
+				ModifyRules();
+
+				for (auto &t : ruleConsumers)
+					t.join();
 
 				cout << "done" << '\n';
 			}
@@ -530,6 +470,7 @@ void SecPolicy::StartProcessing(const string &fileName)
 			{
 				cout << "Can't create hash rule for " <<
 					initialFile.string() << '\n';
+				
 				exit(-1);
 			}
 
@@ -670,14 +611,11 @@ void SecPolicy::DeleteRules(const vector<string> &files)
 }
 
 //print how many rules were created and runtime of rule creation
-void SecPolicy::PrintStats() const
+void SecPolicy::PrintStats(const TimeDiff diff) const
 {
 	using namespace chrono;
 
 	cout << '\n';
-
-	const auto diff =
-		high_resolution_clock::now() - startTime;
 
 	int secs;
 	const int mins = duration<double, milli>(diff).count() / 60000;
@@ -757,7 +695,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 					};
 
 				auto deletedFiles = dataFileMan.GetDeletedFiles(
-					move(totalRulesProcessed(createdRulesData, updatedRulesData)));
+					totalRulesProcessed(createdRulesData, updatedRulesData));
 
 				if (!deletedFiles.empty())
 				{
