@@ -23,6 +23,7 @@ atomic_uintmax_t SecPolicy::updatedRules = 0;
 atomic_uintmax_t SecPolicy::skippedRules = 0;
 atomic_uintmax_t SecPolicy::removedRules = 0;
 
+atomic_uint SecPolicy::producerCount = 0;
 atomic_uint SecPolicy::doneProducers = 0;
 atomic_uint SecPolicy::doneConsumers = 0;
 atomic_bool SecPolicy::fileCheckingNotDone = true;
@@ -44,8 +45,9 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	{
 		enteredRules.emplace_back(
 			secOption, ruleType, path);
-		StartProcessing(path);
 	}
+
+	StartProcessing(paths);
 }
 
 //create a whitelisting rule, execute the file passed in, and delete the rule
@@ -401,15 +403,34 @@ void SecPolicy::CheckGlobalSettings()
 
 //detirmine whether file passed is a 
 //regular file or directory and process respectively
-void SecPolicy::StartProcessing(const string &fileName)
+void SecPolicy::StartProcessing(const vector<string> &files)
 {
 	try
 	{
-		fs::path initialFile(fileName);
-		initialFile.make_preferred();
+		vector<fs::path> regFiles;
+		vector<fs::path> directories;
+		for (const auto &file : files)
+		{
+			fs::path filePath(file);
+			filePath.make_preferred();
+
+			if (fs::is_regular_file(filePath))
+				regFiles.emplace_back(filePath);
+
+			else if (fs::is_directory(filePath))
+				directories.emplace_back(filePath);
+
+			else
+			{
+				cerr << "Can't create hash rule for " <<
+					filePath.string() << '\n';
+
+				exit(-1);
+			}
+		}
 
 		uintmax_t fileSize;
-		string action = [=]()
+		string action = [&]()
 		{
 			if (static_cast<bool>(secOption))
 				return "Whitelisting";
@@ -418,12 +439,39 @@ void SecPolicy::StartProcessing(const string &fileName)
 				return "Blacklisting";
 		} ();
 
-		if (fs::is_directory(initialFile))
-		{
-			cout << action << " files in "
-				<< initialFile.string() << "...";
+		cout << action << " files...";
 
-			dirItQueue.enqueue(make_pair(initialFile, fileSize));
+		if (!regFiles.empty())
+		{
+			RuleProducer ruleProducer;
+			RuleConsumer ruleConsumer;
+			bool creatingSingleRule = true;
+
+			for (auto &file : regFiles)
+			{
+				fileSize = fs::file_size(file);
+				if (fileSize && fs::is_regular_file(file))
+					ruleProducer.ProcessFile(file, fileSize);
+
+				else
+				{
+					cerr << "Can't create hash rule for " <<
+						file.string() << '\n';
+
+					exit(-1);
+				}
+
+				ModifyRules();
+				ruleConsumer.ConsumeRules();
+			}
+		}
+
+		if (!directories.empty())
+		{
+			bool creatingSingleRule = false;
+
+			for (const auto &dir : directories)
+				dirItQueue.enqueue(make_pair(dir, fileSize));
 
 			for (int i = 0; i < initThreadCnt; i++)
 			{
@@ -441,40 +489,9 @@ void SecPolicy::StartProcessing(const string &fileName)
 
 			for (auto &t : ruleConsumers)
 				t.join();
-
-			cout << "done" << '\n';
 		}
 
-		else
-		{
-			fileSize = fs::file_size(initialFile);
-			if (fileSize && fs::is_regular_file(initialFile))
-			{
-				cout << action << " "
-					<< initialFile.string() << "...";
-
-				initThreadCnt = 1;
-				RuleProducer ruleProducer;
-				RuleConsumer ruleConsumer;
-
-				ruleProducer.ProcessFile(initialFile, fileSize);
-				ModifyRules();
-
-				for (auto &t : ruleConsumers)
-					t.join();
-
-				cout << "done" << '\n';
-			}
-
-			else
-			{
-				cout << "Can't create hash rule for " <<
-					initialFile.string() << '\n';
-				
-				exit(-1);
-			}
-
-		}
+		cout << "done\n";
 	}
 	catch (const fs::filesystem_error &e)
 	{
@@ -503,7 +520,7 @@ void SecPolicy::ModifyRules()
 
 		do
 		{
-			filesLeft = doneProducers.load(memory_order_acquire) != initThreadCnt;
+			filesLeft = doneProducers.load(memory_order_acquire) != producerCount;
 			while (fileCheckQueue.try_dequeue(ruleCtok, fileInfo))
 			{
 				filesLeft = true;
@@ -546,8 +563,8 @@ void SecPolicy::ModifyRules()
 								ModificationType::UPDATED, fileSize, updatedRulesData.back()));
 					}
 
-					if (ruleConsumers.size() < initThreadCnt
-						|| ruleConsumers.size() < initThreadCnt + doneProducers)
+					if (!creatingSingleRule && (ruleConsumers.size() < initThreadCnt
+						|| ruleConsumers.size() < initThreadCnt + doneProducers))
 						ruleConsumers.emplace_back(
 							&RuleConsumer::ConsumeRules,
 							RuleConsumer());
@@ -615,8 +632,6 @@ void SecPolicy::PrintStats(const TimeDiff diff) const
 {
 	using namespace chrono;
 
-	cout << '\n';
-
 	int secs;
 	const int mins = duration<double, milli>(diff).count() / 60000;
 
@@ -627,11 +642,11 @@ void SecPolicy::PrintStats(const TimeDiff diff) const
 	else
 		secs = duration<double, milli>(diff).count() / 1000;
 
-	cout << "Created " << createdRules << " rules,\n"
+	cout << "\nCreated  " << createdRules << " rules,\n"
 		<< "Switched " << switchedRules << " rules,\n"
-		<< "Updated " << updatedRules << " rules,\n"
-		<< "Skipped " << skippedRules << " rules, and\n"
-		<< "Removed " << removedRules << " rules "
+		<< "Updated  " << updatedRules << " rules,\n"
+		<< "Skipped  " << skippedRules << " rules, and\n"
+		<< "Removed  " << removedRules << " rules "
 		<< "in ";
 
 	if (mins > 0)
@@ -650,6 +665,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 	//so that it doesn't really affect anything. Changing any other of the global
 	//rules even for a split second, is a security risk.
 	using namespace winreg;
+
 	try
 	{
 		cout << "\nApplying changes...";

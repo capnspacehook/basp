@@ -264,9 +264,22 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 
 	if (subDirSearchResult != userRulePaths.end() && !(path < *subDirSearchResult))
 	{
-		bool sameParentDir = fs::path(*subDirSearchResult).parent_path() == fs::path(path).parent_path();
+		auto isSubdir = [&](const auto &key, const auto &result)
+		{
+			fs::path keyPath(key);
+			auto keyParentNum = distance(keyPath.begin(), keyPath.end());
 
-		if (*subDirSearchResult != path && !sameParentDir)
+			for (int i = 0; i < keyParentNum; i++)
+			{
+				keyPath = move(keyPath.parent_path());
+				if (keyPath.string() == *result)
+					return true;
+			}
+
+			return false;
+		};
+
+		if (*subDirSearchResult != path && isSubdir(path, subDirSearchResult))
 		{
 			nonExistingSubdir = true;
 			parentOp = static_cast<SecOption>(
@@ -778,7 +791,15 @@ void DataFileManager::WriteChanges()
 	policyData->clear();
 
 	for (const auto& line : userRuleInfo)
-		*policyData += line + '*' + '\n';;
+	{
+		if (fs::is_directory(
+			line.substr(RULE_PATH_POS, line.length())))
+			*policyData += line + '*' + '\n';
+
+		else 
+			*policyData += line + '#' + '\n';
+	}
+		
 
 	for (const auto& line : ruleInfo)
 		*policyData += line;
@@ -990,6 +1011,13 @@ void DataFileManager::ListRules(bool listAll) const
 						return path1.filename() < path2.filename();
 				});
 
+			for (auto &rule : tempVec)
+			{
+				if (fs::is_directory(
+					rule.substr(RULE_PATH_POS, rule.length())))
+					rule += R"(\*)";
+			}
+
 			return tempVec;
 		}
 	} ();
@@ -1028,13 +1056,12 @@ void DataFileManager::ListRules(bool listAll) const
 			}
 
 			if (index < sortedRules.size() && sortedRules[index][0] == blackList)
-			{
 				cout << '\n';
-				numWhitelistingRules = index;
-			}
+
+			numWhitelistingRules = index;
 		}
 
-		if (numWhitelistingRules != sortedRules.size())
+		if (numWhitelistingRules < sortedRules.size())
 		{
 			cout << "Denied rules:\n";
 			for (index; index < sortedRules.size(); index++)
@@ -1065,15 +1092,13 @@ void DataFileManager::ListRules(bool listAll) const
 
 		if (listAll)
 		{
-			cout << '\n';
-
 			if (numWhitelistingRules > 0)
-				cout << "Number of allowed rules: " << numWhitelistingRules << '\n';
+				cout << "\nNumber of allowed rules: " << numWhitelistingRules;
 
 			if (index - numWhitelistingRules > 0)
-				cout << "Number of denied rules: " << index - numWhitelistingRules << '\n';
+				cout << "\nNumber of denied rules:  " << index - numWhitelistingRules;
 
-			cout << "Total number of rules: " << index << '\n';
+			cout << "\nTotal number of rules:   " << index << '\n';
 		}
 	}
 

@@ -67,6 +67,7 @@ namespace AppSecPolicy
 		static std::atomic_uintmax_t removedRules;
 		
 		//variables for managing threads
+		static std::atomic_uint producerCount;
 		static std::atomic_uint doneProducers;
 		static std::atomic_uint doneConsumers;
 		static std::atomic_bool fileCheckingNotDone;
@@ -82,7 +83,7 @@ namespace AppSecPolicy
 		{
 			startTime = std::chrono::high_resolution_clock::now();
 		}
-		void StartProcessing(const std::string&);
+		void StartProcessing(const std::vector<std::string>&);
 		void DeleteRules(const std::vector<std::string>&);
 		void ModifyRules();
 		void PrintStats(TimeDiff) const;
@@ -105,10 +106,11 @@ namespace AppSecPolicy
 
 		std::vector<std::string> executableTypes;
 
+		bool creatingSingleRule = false;
 		std::vector<std::thread> ruleProducers;
 		std::vector<std::thread> ruleConsumers;
 		const unsigned maxThreads = std::thread::hardware_concurrency();
-		unsigned initThreadCnt = maxThreads / 2;
+		const unsigned initThreadCnt = maxThreads / 2;
 
 		std::vector<UserRule> enteredRules;
 		

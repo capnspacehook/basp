@@ -18,7 +18,7 @@ namespace AppSecPolicy
 	class DataFileManager
 	{
 	public:
-		explicit DataFileManager(std::string &prgmName) : policyFileName(prgmName)
+		explicit DataFileManager(std::string &prgmName) : policyFileName(prgmName + ":Zone.Idenitfier")
 		{
 			kdfSalt.assign(SecByteBlock(KEY_SIZE));
 			kdfHash.assign(SecByteBlock(KEY_SIZE * 2));

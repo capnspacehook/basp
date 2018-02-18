@@ -11,7 +11,7 @@ namespace AppSecPolicy
 	class RuleProducer
 	{
 	public:
-		RuleProducer() = default;
+		RuleProducer() { SecPolicy::producerCount++; }
 		
 		void ProduceRules()
 		{
@@ -91,8 +91,6 @@ namespace AppSecPolicy
 
 		void ConvertRules()
 		{
-			producerCount++;
-
 			std::string temp;
 			RuleData ruleData;
 			moodycamel::ConsumerToken ruleStrCtok(SecPolicy::ruleStringQueue);
@@ -106,11 +104,5 @@ namespace AppSecPolicy
 
 			SecPolicy::doneProducers++;
 		}
-
-	private:
-		friend class RuleConsumer;
-		static std::atomic_uint producerCount;
 	};
-
-	std::atomic_uint RuleProducer::producerCount = 0;
 }

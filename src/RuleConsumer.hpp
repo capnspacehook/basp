@@ -45,12 +45,13 @@ namespace AppSecPolicy
 		}
 		void CheckRules()
 		{
+			bool rulesLeft;
 			RuleData ruleData;
 			moodycamel::ConsumerToken ruleCheckCtok(SecPolicy::ruleCheckQueue);
 
 			do
 			{
-				rulesLeft = SecPolicy::doneProducers.load(std::memory_order_acquire) != RuleProducer::producerCount;
+				rulesLeft = SecPolicy::doneProducers.load(std::memory_order_acquire) != SecPolicy::producerCount;
 				while (SecPolicy::ruleCheckQueue.try_dequeue(ruleData))
 				{
 					hashRule.CheckRuleIntegrity(ruleData);
@@ -61,7 +62,6 @@ namespace AppSecPolicy
 		}
 
 	private:
-		bool rulesLeft;
 		HashRule hashRule;
 		static std::atomic_uint consumerCount;
 	};
