@@ -443,9 +443,9 @@ void SecPolicy::StartProcessing(const vector<string> &files)
 
 		if (!regFiles.empty())
 		{
+			creatingSingleRule = true;
 			RuleProducer ruleProducer;
 			RuleConsumer ruleConsumer;
-			bool creatingSingleRule = true;
 
 			for (auto &file : regFiles)
 			{
@@ -468,7 +468,7 @@ void SecPolicy::StartProcessing(const vector<string> &files)
 
 		if (!directories.empty())
 		{
-			bool creatingSingleRule = false;
+			creatingSingleRule = false;
 
 			for (const auto &dir : directories)
 				dirItQueue.enqueue(make_pair(dir, fileSize));
