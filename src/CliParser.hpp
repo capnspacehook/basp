@@ -18,7 +18,7 @@ namespace AppSecPolicy
 			if (!result)
 				PrintError(result.errorMessage().c_str());
 
-			else if (showHelp || !(blacklisting || whitelisting || removingRules || listRules || listAllRules || !tempAllowFile.empty() || !tempAllowDir.empty() || !tempAllowParentDir.empty() || checkRules))
+			else if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules || !tempAllowFile.empty() || !tempAllowDir.empty() || !tempAllowParentDir.empty() || checkRules))
 			{
 				std::cout << "Better Application Security Policy\n"
 					<< "https://github.com/capnspacehook/Better-Application-Security-Policy\n\n"
@@ -28,7 +28,7 @@ namespace AppSecPolicy
 				std::exit(-1);
 			}
 
-			else if ((whitelisting || blacklisting || removingRules) && fileArgs.empty())
+			else if ((whitelisting || blacklisting || removingRules || updatingRules) && fileArgs.empty())
 				PrintError("No files or dirs entered");
 
 			else if (!tempAllowFile.empty())
@@ -116,6 +116,7 @@ namespace AppSecPolicy
 		bool listAllRules = false;
 		bool whitelisting = false;
 		bool blacklisting = false;
+		bool updatingRules = false;
 		bool removingRules = false;
 		std::string tempAllowFile;
 		std::string tempAllowDir;
@@ -188,6 +189,9 @@ namespace AppSecPolicy
 			| clara::detail::Opt(blacklisting)
 			["-b"]["--blacklist"]
 			("Create rules that block files")
+			| clara::detail::Opt(updatingRules)
+			["-u"]["--update-rules"]
+			("Update created rules off of file changes")
 			| clara::detail::Opt(removingRules)
 			["-r"]["--remove"]
 			("Remove already created rules")

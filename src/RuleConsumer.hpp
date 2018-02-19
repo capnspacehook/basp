@@ -13,7 +13,6 @@ namespace AppSecPolicy
 		void ConsumeRules()
 		{
 			bool rulesLeft;
-			HashRule hashRule;
 			RuleAction ruleAction;
 			moodycamel::ConsumerToken ruleQueueCtok(SecPolicy::ruleQueue);
 
@@ -34,14 +33,22 @@ namespace AppSecPolicy
 					else if (std::get<MOD_TYPE>(ruleAction) == ModificationType::UPDATED)
 						hashRule.CheckIfRuleOutdated(std::get<FILE_SIZE>(ruleAction),
 							std::get<RULE_DATA>(ruleAction));
-
-					else if (std::get<MOD_TYPE>(ruleAction) == ModificationType::REMOVED)
-						hashRule.RemoveRule(std::get<RULE_GUID>(*std::get<RULE_DATA>(ruleAction)),
-							std::get<SEC_OPTION>(*std::get<RULE_DATA>(ruleAction)));
 				}
 			} while (rulesLeft || SecPolicy::doneConsumers.fetch_add(1, std::memory_order_acq_rel) + 1 == consumerCount);
 		
 			SecPolicy::doneConsumers++;
+		}
+		void RemoveRules()
+		{
+			RuleAction ruleAction;
+			moodycamel::ConsumerToken ruleQueueCtok(SecPolicy::ruleQueue);
+
+			while (SecPolicy::ruleQueue.try_dequeue(ruleQueueCtok, ruleAction))
+			{
+				if (std::get<MOD_TYPE>(ruleAction) == ModificationType::REMOVED)
+					hashRule.RemoveRule(std::get<RULE_GUID>(*std::get<RULE_DATA>(ruleAction)),
+						std::get<SEC_OPTION>(*std::get<RULE_DATA>(ruleAction)));
+			}
 		}
 		void CheckRules()
 		{

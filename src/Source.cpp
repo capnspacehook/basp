@@ -28,7 +28,8 @@ int main(int argc, char *argv[])
 
 	CliParser parser(argc, argv);
 
-	SecPolicy secPolicy(parser.programName, parser.password, parser.listRules, parser.listAllRules);
+	SecPolicy secPolicy(parser.programName, parser.password, parser.updatingRules, 
+		parser.listRules, parser.listAllRules);
 
 	if (parser.blacklisting)
 		secPolicy.CreatePolicy(parser.fileArgs, SecOption::BLACKLIST);

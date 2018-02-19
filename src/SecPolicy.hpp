@@ -18,8 +18,8 @@ namespace AppSecPolicy
 	class SecPolicy
 	{
 	public:
-		explicit SecPolicy(std::string &prgmName, std::string& pwd, bool lstRules, bool lstAll)
-			: listRules(lstRules), listAllRules(lstAll), dataFileMan(prgmName)
+		explicit SecPolicy(std::string &prgmName, std::string& pwd, bool update, bool lstRules, bool lstAll)
+			: updateRules(update), listRules(lstRules), listAllRules(lstAll), dataFileMan(prgmName)
 		{
 			dataFileMan.VerifyPassword(pwd);
 			
@@ -34,10 +34,7 @@ namespace AppSecPolicy
 				const auto diff = std::chrono::high_resolution_clock::now() - startTime;
 
 				if (listRules || listAllRules)
-				{
-					std::cout << '\n';
 					ListRules();
-				}
 
 				PrintStats(diff);
 			}
@@ -89,6 +86,7 @@ namespace AppSecPolicy
 		void PrintStats(TimeDiff) const;
 		void ApplyChanges(bool);
 
+		bool updateRules = false;
 		bool ruleCheck = false;
 		bool listRules = false;
 		bool justListing = true;

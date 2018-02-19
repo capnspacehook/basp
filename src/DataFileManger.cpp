@@ -71,25 +71,32 @@ bool DataFileManager::OpenPolicyFile()
 
 		if (getline(iss, temp))
 		{
-			while (temp.back() == '*')
+			bool rulesLeft = true;
+			while (rulesLeft && (temp.back() == '*' || temp.back() == '#'))
 			{
+				if (temp.back() == '*')
+					temp.pop_back();
+
 				temp.pop_back();
 				userRuleInfo.emplace_back(temp);
 				userRulePaths.emplace_back(temp.substr(
 					RULE_PATH_POS, temp.length()));
 
-				getline(iss, temp);
+				rulesLeft = static_cast<bool>(getline(iss, temp));
 			}
 
-			ruleInfo.emplace_back(temp + '\n');
-			rulePaths.emplace_back(temp.substr(
-				RULE_PATH_POS, temp.find("|{") - 4));
-
-			while (getline(iss, temp))
+			if (rulesLeft)
 			{
 				ruleInfo.emplace_back(temp + '\n');
 				rulePaths.emplace_back(temp.substr(
 					RULE_PATH_POS, temp.find("|{") - 4));
+
+				while (getline(iss, temp))
+				{
+					ruleInfo.emplace_back(temp + '\n');
+					rulePaths.emplace_back(temp.substr(
+						RULE_PATH_POS, temp.find("|{") - 4));
+				}
 			}
 		}
 
@@ -118,7 +125,7 @@ void DataFileManager::ClosePolicyFile()
 	{
 		//prepend header and global policy settings
 		policyData->insert(0, policyFileHeader);
-		policyData->insert(policyFileHeader.length(), GetCurrentPolicySettings() + '\n');
+		policyData->insert(policyFileHeader.length(), GetGlobalSettings() + '\n');
 
 		//prepend dummy data that will be skipped
 		policyData->insert(0, KEY_SIZE, 'A');
@@ -237,82 +244,24 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	const string &path, size_t &index, bool &parentDirDiffOp) const
 {
-	bool validRule = false;
-	
-	SecOption parentOp;
-	bool nonExistingSubdir = false;
-	const SecOption findOp = option;
-	const RuleType findType = type;
 	RuleFindResult result = RuleFindResult::NO_MATCH;
 
 	if (userRulePaths.empty())
 		return result;
 
-	vector<string>::const_iterator foundRule;
-
-	auto subDirSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
-		[&path](string const& str1, string const& str2)
-		{
-			// compare UP TO the length of the prefix and no farther
-			if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
-				return cmp > 0;
-
-			// The strings are equal to the length of the suffix so
-			// behave as if they are equal. That means s1 < s2 == false
-			return false;
-		});
-
-	if (subDirSearchResult != userRulePaths.end() && !(path < *subDirSearchResult))
-	{
-		auto isSubdir = [&](const auto &key, const auto &result)
-		{
-			fs::path keyPath(key);
-			auto keyParentNum = distance(keyPath.begin(), keyPath.end());
-
-			for (int i = 0; i < keyParentNum; i++)
-			{
-				keyPath = move(keyPath.parent_path());
-				if (keyPath.string() == *result)
-					return true;
-			}
-
-			return false;
-		};
-
-		if (*subDirSearchResult != path && isSubdir(path, subDirSearchResult))
-		{
-			nonExistingSubdir = true;
-			parentOp = static_cast<SecOption>(
-				userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
-		
-			foundRule = subDirSearchResult;
-			validRule = true;
-		}
-
-		else if (*subDirSearchResult == path)
-		{
-			foundRule = subDirSearchResult;
-			validRule = true;
-		}
-	}
+	bool validRule = false;
+	SecOption parentOp;
+	bool parentDir = false;
+	bool existingSubdir = false;
+	bool nonExistingSubdir = false;
+	const SecOption findOp = option;
+	const RuleType findType = type;
+	
+	auto foundRule = FindUserRuleHelper(path, parentDir, nonExistingSubdir, existingSubdir,
+		parentOp, validRule);
 
 	if (validRule)
 	{
-		bool existingSubdir = false;
-
-		auto exactSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
-
-		if (exactSearchResult != userRulePaths.end() && !(path < *exactSearchResult))
-		{
-			if (subDirSearchResult != exactSearchResult)
-			{
-				foundRule = exactSearchResult;
-				existingSubdir = true;
-			}
-
-			nonExistingSubdir = false;
-		}
-
 		index = distance(userRulePaths.begin(), foundRule);
 
 		string foundRuleInfo = userRuleInfo[index];
@@ -331,7 +280,7 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 			else
 				result = RuleFindResult::REMOVED;
 		}
-		
+
 		else if (findOp != option)
 		{
 			if (nonExistingSubdir)
@@ -352,10 +301,19 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 					result = RuleFindResult::EXIST_SUBDIR_DIFF_OP;
 			}
 
+			else if (parentDir)
+			{
+				if (findOp == SecOption::REMOVED)
+					result = RuleFindResult::PARENT_DIR_TO_BE_RM;
+
+				else
+					result = RuleFindResult::PARENT_DIR_DIFF_OP;
+			}
+
 			else
 				result = RuleFindResult::DIFF_SEC_OP;
 		}
-			
+
 		else if (findType != type)
 			result = RuleFindResult::DIFF_TYPE;
 
@@ -370,6 +328,9 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 			else if (existingSubdir)
 				result = RuleFindResult::EXIST_SUBDIR_SAME_OP;
 
+			else if (parentDir)
+				result = RuleFindResult::PARENT_DIR_SAME_OP;
+
 			else
 				result = RuleFindResult::EXACT_MATCH;
 		}
@@ -379,7 +340,7 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 			if (option == SecOption::REMOVED && parentOp != findOp)
 				parentDirDiffOp = true;
 
-			else if (parentOp != option)
+			else if (result != RuleFindResult::RM_SUBDIR && parentOp != option)
 				parentDirDiffOp = true;
 		}
 	}
@@ -387,13 +348,133 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	return result;
 }
 
+VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &parentDir, 
+	bool &nonExistingSubdir, bool &existingSubdir, SecOption &parentOp,  bool &validRule) const
+{
+	VecStrConstIt foundRule;
+
+	auto isSubDir = [&](const auto &key, const auto &result)
+	{
+		fs::path keyPath(key);
+		auto keyParentNum = distance(keyPath.begin(), keyPath.end()) - 2;
+
+		for (int i = 0; i < keyParentNum; i++)
+		{
+			keyPath = move(keyPath.parent_path());
+			if (keyPath.string() == result)
+				return true;
+		}
+
+		return false;
+	};
+
+	auto subDirSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
+		[&path](string const& str1, string const& str2)
+		{
+			//compare UP TO the length of the prefix and no farther
+			if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
+				return cmp > 0;
+
+			//The strings are equal to the length of the suffix so
+			//behave as if they are equal. That means s1 < s2 == false
+			return false;
+		});
+
+	if (subDirSearchResult != userRulePaths.end() && !(path < *subDirSearchResult))
+	{
+		if (*subDirSearchResult != path && isSubDir(path, *subDirSearchResult))
+		{
+			nonExistingSubdir = true;
+			parentOp = static_cast<SecOption>(
+				userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
+
+			foundRule = subDirSearchResult;
+			validRule = true;
+		}
+
+		else if (*subDirSearchResult != path && isSubDir(*subDirSearchResult, path))
+		{
+			parentDir = true;
+			parentOp = static_cast<SecOption>(
+				userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
+
+			foundRule = subDirSearchResult;
+			validRule = true;
+		}
+
+		else if (*subDirSearchResult == path)
+		{
+			foundRule = subDirSearchResult;
+			validRule = true;
+		}
+
+		else
+		{
+			auto parentDirSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
+				[&path](string const& str1, string const& str2)
+				{
+					//compare UP TO the length of the prefix and no farther
+					if (auto cmp = strncmp(str1.data(), str2.data(), str1.size()))
+						return cmp < 0;
+
+					//The strings are equal to the length of the suffix so
+					//behave as if they are equal. That means s1 < s2 == false
+					return false;
+				});
+
+			if (parentDirSearchResult != userRulePaths.end() && !(path < *parentDirSearchResult))
+			{
+				nonExistingSubdir = true;
+				parentOp = static_cast<SecOption>(
+					userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
+
+				foundRule = subDirSearchResult;
+				validRule = true;
+			}
+		}
+	}
+
+	else if (subDirSearchResult != userRulePaths.end() && isSubDir(*subDirSearchResult, path))
+	{
+		parentDir = true;
+		parentOp = static_cast<SecOption>(
+			userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
+
+		foundRule = subDirSearchResult;
+		validRule = true;
+	}
+
+	if (validRule)
+	{
+		bool existingSubdir = false;
+
+		if (!parentDir)
+		{
+			auto exactSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
+
+			if (exactSearchResult != userRulePaths.end() && !(path < *exactSearchResult))
+			{
+				if (subDirSearchResult != exactSearchResult)
+				{
+					foundRule = exactSearchResult;
+					existingSubdir = true;
+				}
+
+				nonExistingSubdir = false;
+			}
+		}
+	}
+
+	return foundRule;
+}
+
 vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
 {
 	vector<RuleData> rulesInDir;
 
-	auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), path);
+	auto foundRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), path);
 
-	auto removedRulesEnd = upper_bound(removedRulesBegin, rulePaths.end(), path,
+	auto foundRulesEnd = upper_bound(foundRulesBegin, rulePaths.end(), path,
 		[&path](string const& str1, string const& str2)
 		{
 			// compare UP TO the length of the prefix and no farther
@@ -405,16 +486,45 @@ vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
 			return false;
 		});
 
-	if ((removedRulesBegin != rulePaths.end() || removedRulesEnd != rulePaths.end())
-		&& (removedRulesBegin != rulePaths.begin() || removedRulesEnd != rulePaths.begin()))
+	if ((foundRulesBegin != rulePaths.end() || foundRulesEnd != rulePaths.end())
+		&& (foundRulesBegin != rulePaths.begin() || foundRulesEnd != rulePaths.begin()))
 	{
 		auto ruleInfoRange = make_pair(
-			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesBegin),
-			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesEnd));
+			ruleInfo.begin() + distance(rulePaths.begin(), foundRulesBegin),
+			ruleInfo.begin() + distance(rulePaths.begin(), foundRulesEnd));
 
-		rulesInDir.reserve(distance(removedRulesBegin, removedRulesEnd));
+		rulesInDir.reserve(distance(foundRulesBegin, foundRulesEnd));
 		for (auto it = ruleInfoRange.first; it != ruleInfoRange.second; ++it)
 			rulesInDir.emplace_back(StringToRuleData(*it));
+	}
+
+	return rulesInDir;
+}
+
+pair<VecStrConstIt, VecStrConstIt> DataFileManager::FindUserRulesInDir(const string &path) const
+{
+	pair<VecStrConstIt, VecStrConstIt> rulesInDir;
+	
+	auto foundRulesBegin = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
+
+	auto foundRulesEnd = upper_bound(foundRulesBegin, userRulePaths.end(), path,
+		[&path](string const& str1, string const& str2)
+		{
+			// compare UP TO the length of the prefix and no farther
+			if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
+				return cmp < 0;
+
+			// The strings are equal to the length of the prefix so
+			// behave as if they are equal. That means s1 < s2 == false
+			return false;
+		});
+
+	if ((foundRulesBegin != userRulePaths.end() || foundRulesEnd != userRulePaths.end())
+		&& (foundRulesBegin != userRulePaths.begin() || foundRulesEnd != userRulePaths.begin()))
+	{
+		rulesInDir = make_pair(
+			userRuleInfo.begin() + distance(userRulePaths.begin(), foundRulesBegin),
+			userRuleInfo.begin() + distance(userRulePaths.begin(), foundRulesEnd));
 	}
 
 	return rulesInDir;
@@ -601,11 +711,11 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 
 		if (result == RuleFindResult::NO_MATCH && !rulesRemoved)
 		{
-			rulesNotSorted = true;
 			userRuleInfo.emplace_back(to_string(static_cast<int>(option))
 				+ '|' + to_string(static_cast<int>(type))
 				+ '|' + location);
 			
+			rulesNotSorted = true;
 			userRulesNotSorted = true;
 		}
 
@@ -628,9 +738,33 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 
 			else if (result == RuleFindResult::EXIST_SUBDIR_TO_BE_RM)
 				userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+
+			else if (result == RuleFindResult::PARENT_DIR_TO_BE_RM)
+			{
+				auto deletedRules = FindUserRulesInDir(location);
+				auto start = distance(userRuleInfo.cbegin(), deletedRules.first);
+				auto end = distance(userRuleInfo.cbegin(), deletedRules.second);
+
+				for (auto i = start; i < end; i++)
+					userRuleInfo[i][SEC_OPTION] = static_cast<char>(option) + '0';
+			}
 				
 			else
 				userRuleInfo.erase(userRuleInfo.begin() + index);
+		}
+
+		else if (result == RuleFindResult::PARENT_DIR_SAME_OP 
+			|| result == RuleFindResult::PARENT_DIR_DIFF_OP)
+		{
+			userRuleInfo.emplace_back(to_string(static_cast<int>(option))
+				+ '|' + to_string(static_cast<int>(type))
+				+ '|' + location);
+
+			auto oldRules = FindUserRulesInDir(location);
+			userRuleInfo.erase(oldRules.first, oldRules.second);
+
+			rulesNotSorted = true;
+			userRulesNotSorted = true;
 		}
 
 		else if (result == RuleFindResult::NO_EXIST_SUBDIR_DIFF_OP)
@@ -654,6 +788,8 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 				userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
 		}
 
+		
+
 		else if (result == RuleFindResult::DIFF_SEC_OP)
 		{
 			updatedRules.emplace_back(location);
@@ -672,7 +808,7 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 		else if (result == RuleFindResult::REMOVED)
 			userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
 
-		else 
+		else if (!rulesRemoved)
 			updatedRules.emplace_back(location);
 	}
 }
@@ -739,28 +875,49 @@ void DataFileManager::RemoveOldEntries()
 {
 	SortRules();
 
-	for (const auto &rule : removedRules)
+	bool allRulesRemoved = true;
+	for (const auto &rule : userRuleInfo)
 	{
-		auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), rule);
+		if (rule.front() != static_cast<char>(SecOption::REMOVED) + '0')
+		{
+			allRulesRemoved = false;
+			break;
+		}
+	}
 
-		auto removedRulesEnd = upper_bound(removedRulesBegin, rulePaths.end(), rule,
-			[&rule](string const& str1, string const& str2)
-			{
-				// compare UP TO the length of the prefix and no farther
-				if (auto cmp = strncmp(str1.data(), str2.data(), rule.size()))
-					return cmp < 0;
+	if (allRulesRemoved)
+	{
+		ruleInfo.clear();
+		rulePaths.clear();
+		userRuleInfo.clear();
+		userRulePaths.clear();
+	}
 
-				// The strings are equal to the length of the prefix so
-				// behave as if they are equal. That means s1 < s2 == false
-				return false;
-			});
+	else
+	{
+		for (const auto &rule : removedRules)
+		{
+			auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), rule);
 
-		auto ruleInfoRange = make_pair(
-			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesBegin),
-			ruleInfo.begin() + distance(rulePaths.begin(), removedRulesEnd));
+			auto removedRulesEnd = upper_bound(removedRulesBegin, rulePaths.end(), rule,
+				[&rule](string const& str1, string const& str2)
+				{
+					// compare UP TO the length of the prefix and no farther
+					if (auto cmp = strncmp(str1.data(), str2.data(), rule.size()))
+						return cmp < 0;
 
-		rulePaths.erase(removedRulesBegin, removedRulesEnd);
-		ruleInfo.erase(ruleInfoRange.first, ruleInfoRange.second);
+					// The strings are equal to the length of the prefix so
+					// behave as if they are equal. That means s1 < s2 == false
+					return false;
+				});
+
+			auto ruleInfoRange = make_pair(
+				ruleInfo.begin() + distance(rulePaths.begin(), removedRulesBegin),
+				ruleInfo.begin() + distance(rulePaths.begin(), removedRulesEnd));
+
+			rulePaths.erase(removedRulesBegin, removedRulesEnd);
+			ruleInfo.erase(ruleInfoRange.first, ruleInfoRange.second);
+		}
 	}
 }
 
@@ -794,7 +951,7 @@ void DataFileManager::WriteChanges()
 	{
 		if (fs::is_directory(
 			line.substr(RULE_PATH_POS, line.length())))
-			*policyData += line + '*' + '\n';
+			*policyData += line + R"(\*)" + '\n';
 
 		else 
 			*policyData += line + '#' + '\n';
@@ -816,8 +973,6 @@ void DataFileManager::VerifyPassword(string& guessPwd)
 		firstTimeRun = true;
 		SetNewPassword(guessPwd);
 	}
-
-	cout << '\n';
 }
 
 void DataFileManager::CheckPassword(string& guessPwd)
@@ -936,7 +1091,7 @@ void DataFileManager::SetNewPassword(string& guessPwd)
 
 	passwordReset = true;
 
-	cout << "done" << '\n';
+	cout << "done\n";;
 	ClosePolicyFile();
 }
 
@@ -1029,66 +1184,68 @@ void DataFileManager::ListRules(bool listAll) const
 		
 		if (sortedRules[0][0] == whiteList)
 		{
-			cout << "Allowed rules:\n";
+			cout << "\nAllowed rules:";
 			for (index; index < sortedRules.size(); index++)
 			{
 				if (sortedRules[index][SEC_OPTION] == whiteList)
 				{
 					if (listAll)
 					{
-						cout << sortedRules[index].substr(
-							RULE_PATH_POS, sortedRules[index].find("|{") - 4) << '\n';
+						cout << '\n' << sortedRules[index].substr(
+							RULE_PATH_POS, sortedRules[index].find("|{") - 4);
 					}
 
 					else
 					{
-						cout << sortedRules[index].substr(RULE_PATH_POS,
-							sortedRules[index].length()) << '\n';
+						cout << '\n' << sortedRules[index].substr(RULE_PATH_POS,
+							sortedRules[index].length());
 					}
 				}
 
 				else if (!listAll && sortedRules[index][SEC_OPTION] == removed)
-					cout << "Except: " << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length()) << '\n';
+					cout << "\nExcept: " << sortedRules[index].substr(RULE_PATH_POS,
+						sortedRules[index].length());
 
 				else
 					break;
 			}
 
-			if (index < sortedRules.size() && sortedRules[index][0] == blackList)
-				cout << '\n';
-
 			numWhitelistingRules = index;
 		}
 
-		if (numWhitelistingRules < sortedRules.size())
+		if (numWhitelistingRules < sortedRules.size() && sortedRules[index][0] == blackList)
 		{
-			cout << "Denied rules:\n";
+			if (numWhitelistingRules)
+				cout << '\n';
+
+			cout << "\nDenied rules:";
 			for (index; index < sortedRules.size(); index++)
 			{
 				if (sortedRules[index][SEC_OPTION] == blackList)
 				{
 					if (listAll)
 					{
-						cout << sortedRules[index].substr(
-							RULE_PATH_POS, sortedRules[index].find("|{") - 4) << '\n';
+						cout << '\n' << sortedRules[index].substr(
+							RULE_PATH_POS, sortedRules[index].find("|{") - 4);
 					}
 
 					else
 					{
-						cout << sortedRules[index].substr(RULE_PATH_POS,
-							sortedRules[index].length()) << '\n';
+						cout << '\n' << sortedRules[index].substr(RULE_PATH_POS,
+							sortedRules[index].length());
 					}
 				}
 
 				else if (!listAll && sortedRules[index][SEC_OPTION] == removed)
-					cout << "Except: " << sortedRules[index].substr(RULE_PATH_POS,
-						sortedRules[index].length()) << '\n';
+					cout << "\nExcept: " << sortedRules[index].substr(RULE_PATH_POS,
+						sortedRules[index].length());
 
 				else
 					break;
 			}
 		}
+
+		cout << '\n';
 
 		if (listAll)
 		{
@@ -1103,5 +1260,5 @@ void DataFileManager::ListRules(bool listAll) const
 	}
 
 	else
-		cout << "Cannot list rules, no rules have been created\n";
+		cout << "\nCannot list rules, no rules have been created\n";
 }

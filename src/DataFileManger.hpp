@@ -15,6 +15,9 @@ namespace AppSecPolicy
 	const int RULE_TYPE_POS = 2;
 	const int RULE_PATH_POS = 4;
 
+	using VecStrIt = std::vector<std::string>::iterator;
+	using VecStrConstIt = std::vector<std::string>::const_iterator;
+
 	class DataFileManager
 	{
 	public:
@@ -41,10 +44,14 @@ namespace AppSecPolicy
 			policyData.ProtectMemory(true);
 			return rulesCreated;
 		}
-		std::string GetGlobalSettings() const
+		std::string GetGlobalSettings()
 		{
 			if (passwordReset)
-				return GetCurrentPolicySettings();
+			{
+				passwordReset = false;
+				globalPolicySettings = GetCurrentPolicySettings();
+				return globalPolicySettings;
+			}
 
 			else
 				return globalPolicySettings;
@@ -82,6 +89,9 @@ namespace AppSecPolicy
 		
 		RuleFindResult FindUserRule(SecOption, RuleType, 
 			const std::string&, std::size_t&, bool&) const;
+		VecStrConstIt FindUserRuleHelper(const std::string&, bool&, bool&, bool&,
+			SecOption&, bool&) const;
+		std::pair<VecStrConstIt, VecStrConstIt> FindUserRulesInDir(const std::string&) const;
 		
 		void SortRules();
 		const unsigned iterations = 1000;	//iterations for PBKDF2
@@ -108,7 +118,7 @@ namespace AppSecPolicy
 		
 		bool rulesAdded = false;
 		bool firstTimeRun = false;
-		bool passwordReset = false;
+		mutable bool passwordReset = false;
 		bool policyDataModified = false;
 
 		bool rulesNotSorted = true;
