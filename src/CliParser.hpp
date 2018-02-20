@@ -38,7 +38,7 @@ namespace AppSecPolicy
 
 				else if (!fs::is_regular_file(tempAllowFile))
 					PrintError("An executable file must be entered for '-t' option");
-			
+
 				ToLower(tempAllowFile);
 			}
 
@@ -66,7 +66,7 @@ namespace AppSecPolicy
 
 				else if (!fs::is_regular_file(tempAllowExe))
 					PrintError("An executable file must be entered for '-e' option");
-				
+
 				ToLower(tempAllowExe);
 			}
 
@@ -91,6 +91,9 @@ namespace AppSecPolicy
 
 			else if ((whitelisting && blacklisting) || (whitelisting && removingRules) || (blacklisting && removingRules))
 				PrintError("Options '-w', '-b', and '-r' are mutually exclusive");
+
+			else if (removingRules && updatingRules)
+				PrintError("'-u' cannot be used with 'r'");
 
 			else if (executeAsAdmin && !(tempAllowFile.empty() || tempAllowDir.empty() || tempAllowExe.empty()))
 				PrintError("'--admin' is only valid when used with '-t', '-d' and '-e', or ");
@@ -191,7 +194,7 @@ namespace AppSecPolicy
 			("Create rules that block files")
 			| clara::detail::Opt(updatingRules)
 			["-u"]["--update-rules"]
-			("Update created rules off of file changes")
+			("Update created rules off of file changes. If used with '-b' or '-w', rules already created will be updated")
 			| clara::detail::Opt(removingRules)
 			["-r"]["--remove"]
 			("Remove already created rules")
@@ -208,7 +211,7 @@ namespace AppSecPolicy
 			["-a"]["--auto-allow-execute"]
 			("Temporarily allow dir of file entered, then execute file")
 			| clara::detail::Opt(checkRules)
-			["--check-rules"]
+			["-k"]["--check-rules"]
 			("Check for any modifications to created files in the registry. Rules will automactically be fixed if modified")
 			| clara::detail::Opt(password, "password")
 			["--password"]

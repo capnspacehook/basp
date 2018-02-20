@@ -31,11 +31,17 @@ int main(int argc, char *argv[])
 	SecPolicy secPolicy(parser.programName, parser.password, parser.updatingRules, 
 		parser.listRules, parser.listAllRules);
 
+	if (parser.checkRules)
+		secPolicy.CheckRules();
+
 	if (parser.blacklisting)
 		secPolicy.CreatePolicy(parser.fileArgs, SecOption::BLACKLIST);
 
 	else if (parser.whitelisting)
 		secPolicy.CreatePolicy(parser.fileArgs, SecOption::WHITELIST);
+
+	else if (parser.updatingRules)
+		secPolicy.UpdateRules(parser.fileArgs);
 
 	else if (parser.removingRules)
 		secPolicy.RemoveRules(parser.fileArgs);
@@ -48,9 +54,6 @@ int main(int argc, char *argv[])
 
 	else if (!parser.tempAllowParentDir.empty())
 		secPolicy.TempRun(parser.parentDir, parser.tempAllowParentDir);
-
-	else if (parser.checkRules)
-		secPolicy.CheckRules();
 }
 
 void CheckElevated()

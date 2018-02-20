@@ -47,6 +47,7 @@ namespace AppSecPolicy
 			const SecOption &op, RuleType = RuleType::HASHRULE);
 		void TempRun(const std::string &path);
 		void TempRun(const std::string &dir, const std::string &exeFile);
+		void UpdateRules(const std::vector<std::string>&);
 		void RemoveRules(std::vector<std::string> &paths);
 		void CheckRules();
 		void ListRules() const;
@@ -81,7 +82,6 @@ namespace AppSecPolicy
 			startTime = std::chrono::high_resolution_clock::now();
 		}
 		void StartProcessing(const std::vector<std::string>&);
-		void DeleteRules(const std::vector<std::string>&);
 		void ModifyRules();
 		void PrintStats(TimeDiff) const;
 		void ApplyChanges(bool);

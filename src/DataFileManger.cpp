@@ -446,8 +446,6 @@ VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &pare
 
 	if (validRule)
 	{
-		bool existingSubdir = false;
-
 		if (!parentDir)
 		{
 			auto exactSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);

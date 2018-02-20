@@ -246,6 +246,52 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 	}
 }
 
+void SecPolicy::UpdateRules(const vector<string> &paths)
+{
+	justListing = false;
+
+	vector<RuleData> temp;
+	vector<RuleData> rulesToUpdate;
+
+	for (const auto &path : paths)
+	{
+		enteredRules.emplace_back(
+			secOption, ruleType, path);
+
+		temp = dataFileMan.FindRulesInDir(path);
+		rulesToUpdate.insert(rulesToUpdate.begin(), temp.begin(), temp.end());
+
+		cout << "\nUpdating rules in " << path << "...";
+	}
+
+	if (!rulesToUpdate.empty())
+	{
+		for (const auto &rule : rulesToUpdate)
+		{
+			ruleQueue.enqueue(make_tuple(
+				ModificationType::UPDATED,
+				fs::file_size(get<FILE_LOCATION>(rule)),
+				make_shared<RuleData>(rule)));
+		}
+
+		fileCheckingNotDone = false;
+		for (int i = 0; i < initThreadCnt; i++)
+		{
+			ruleConsumers.emplace_back(
+				&RuleConsumer::ConsumeRules,
+				RuleConsumer());
+		}
+
+		for (auto &t : ruleConsumers)
+			t.join();
+	}
+
+	else
+		cout << "\nNo rules created in files/dirs specified";
+
+	cout << '\n';
+}
+
 //delete rules from registry
 void SecPolicy::RemoveRules(vector<string> &paths)
 {
@@ -256,7 +302,53 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 		enteredRules.emplace_back(
 			SecOption::REMOVED, ruleType, path);
 
-	DeleteRules(paths);
+	for (const auto &file : paths)
+	{
+		if (fs::is_directory(file))
+		{
+			cout << "\nRemoving rules of " << file << "...";
+
+			auto rulesInDir = dataFileMan.FindRulesInDir(file);
+
+			if (!rulesInDir.empty())
+			{
+				for (const auto &rule : rulesInDir)
+					ruleQueue.enqueue(make_tuple(
+						ModificationType::REMOVED, 0ULL, make_shared<RuleData>(rule)));
+			}
+
+			else
+			{
+				cerr << "\nCannot remove rules: no rules exist in " << file;
+			}
+		}
+
+		else if (fs::is_regular_file(file))
+		{
+			RuleData ruleData;
+			if (dataFileMan.FindRule(secOption, ruleType, file, ruleData)
+				!= RuleFindResult::NO_MATCH)
+			{
+				cout << "\nRemoving rule for " << file << "...";
+
+				ruleQueue.enqueue(make_tuple(
+					ModificationType::REMOVED, 0ULL, make_shared<RuleData>(ruleData)));
+			}
+
+			else
+				cerr << "\nCannot remove rule: no rule for " << file << " exists";
+		}
+	}
+
+	for (int i = 0; i < initThreadCnt; i++)
+		ruleConsumers.emplace_back(
+			&RuleConsumer::RemoveRules,
+			RuleConsumer());
+
+	for (auto &t : ruleConsumers)
+		t.join();
+
+	cout << '\n';
 }
 
 void SecPolicy::CheckRules()
@@ -268,7 +360,7 @@ void SecPolicy::CheckRules()
 
 	if (dataFileMan.AreRulesCreated())
 	{
-		cout << "Cannot check rules, no rules have been created\n";
+		cout << "\nCannot check rules, no rules have been created\n";
 		return;
 	}
 
@@ -286,11 +378,6 @@ void SecPolicy::CheckRules()
 
 	while (getline(ruleStrings, temp))
 		ruleStringQueue.enqueue(move(temp));
-	
-	/*RegKey policyKey(
-		HKEY_LOCAL_MACHINE,
-		"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
-		KEY_READ | KEY_WRITE);*/
 
 	for (int i = 0; i < initThreadCnt; i++)
 	{
@@ -464,6 +551,12 @@ void SecPolicy::StartProcessing(const vector<string> &files)
 		{
 			creatingSingleRule = false;
 
+			if (ruleCheck)
+			{
+				ruleProducers.clear();
+				ruleConsumers.clear();
+			}
+
 			for (const auto &dir : directories)
 			{
 				dirItQueue.enqueue(make_pair(dir, fileSize));
@@ -585,57 +678,6 @@ void SecPolicy::ModifyRules()
 	{
 		cout << e.what() << '\n';
 	}
-}
-
-void SecPolicy::DeleteRules(const vector<string> &files)
-{
-	for (const auto &file : files)
-	{
-		if (fs::is_directory(file))
-		{
-			cout << "\nRemoving rules of " << file << "...";
-
-			auto rulesInDir = dataFileMan.FindRulesInDir(file);
-
-			if (!rulesInDir.empty())
-			{
-				for (const auto &rule : rulesInDir)
-					ruleQueue.enqueue(make_tuple(
-						ModificationType::REMOVED, 0ULL, make_shared<RuleData>(rule)));
-			}
-
-			else
-			{
-				cerr << "\nCannot remove rules: no rules exist in " << file;
-			}
-		}
-
-		else if (fs::is_regular_file(file))
-		{
-			RuleData ruleData;
-			if (dataFileMan.FindRule(secOption, ruleType, file, ruleData)
-				!= RuleFindResult::NO_MATCH)
-			{
-				cout << "\nRemoving rule for " << file << "...";
-
-				ruleQueue.enqueue(make_tuple(
-					ModificationType::REMOVED, 0ULL, make_shared<RuleData>(ruleData)));
-			}
-
-			else
-				cerr << "\nCannot remove rule: no rule for " << file << " exists";
-		}
-	}
-
-	for (int i = 0; i < initThreadCnt; i++)
-		ruleConsumers.emplace_back(
-			&RuleConsumer::RemoveRules,
-			RuleConsumer());
-
-	for (auto &t : ruleConsumers)
-		t.join();
-
-	cout << '\n';
 }
 
 //print how many rules were created and runtime of rule creation
