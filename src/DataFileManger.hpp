@@ -33,14 +33,14 @@ namespace AppSecPolicy
 			CloseHandle(policyFileHandle);
 		}
 
-		bool IsFirstTimeRun() const
+		bool IsFirstTimeRun() const noexcept
 		{
 			return firstTimeRun;
 		}
 		bool AreRulesCreated()
 		{
-			auto foundPos = policyData->find('\n', KEY_SIZE + policyFileHeader.size());
-			bool rulesCreated = foundPos == policyData->size() - 1;
+			const auto foundPos = policyData->find('\n', KEY_SIZE + policyFileHeader.size());
+			const bool rulesCreated = foundPos == policyData->size() - 1;
 			policyData.ProtectMemory(true);
 			return rulesCreated;
 		}

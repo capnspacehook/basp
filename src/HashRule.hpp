@@ -6,7 +6,8 @@ namespace AppSecPolicy
 	class HashRule
 	{
 	public:
-		HashRule() = default;
+		explicit HashRule(bool update) noexcept : updateRules(update) {}
+		~HashRule() = default;
 		HashRule(HashRule&) = default;
 		HashRule(HashRule&&) = default;
 		
@@ -33,16 +34,17 @@ namespace AppSecPolicy
 		inline bool MakeGUID();
 		inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;
 
+		bool updateRules = false;
 		std::string guid;
 		static const std::string fileProps[5];
-		std::string description = "";
+		std::string description;
 		std::string fileVersion;
-		std::string friendlyName = "";
-		static const int hashAlg = 32771;
+		std::string friendlyName;
+		static constexpr int hashAlg = 32771;
 		std::vector<BYTE> itemData;
 		uintmax_t itemSize;
 		uintmax_t lastModified;
-		static const int shaHashAlg = 32780;
+		static constexpr int shaHashAlg = 32780;
 		std::vector<BYTE> sha256Hash;
 	};
 }

@@ -11,7 +11,7 @@ namespace AppSecPolicy
 	class RuleProducer
 	{
 	public:
-		RuleProducer() { SecPolicy::producerCount++; }
+		RuleProducer() noexcept { SecPolicy::producerCount++; }
 		
 		void ProduceRules()
 		{

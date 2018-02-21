@@ -63,37 +63,14 @@ void HashRule::SwitchRule(const uintmax_t &fileSize, RuleDataPtr &ruleData)
 		guid = get<RULE_GUID>(*ruleData);
 		get<SEC_OPTION>(*ruleData) = swappedOp;
 
-		string policyPath = [&]()
-		{
-			if (originalOp == SecOption::BLACKLIST)
-				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes\)" + guid;
-			else
-				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes\)" + guid;
-		} ();
-
-		//get values of already created rule
-		RegKey hashRuleKey(
-			HKEY_LOCAL_MACHINE,
-			policyPath,
-			KEY_READ
-		);
-
 		if (!CheckIfRuleOutdated(fileSize, ruleData, false))
 		{
-			string fileName = hashRuleKey.GetStringValue("Description");
-			friendlyName = hashRuleKey.GetStringValue("FriendlyName");
-			itemData = hashRuleKey.GetBinaryValue("ItemData");
-			itemSize = hashRuleKey.GetQwordValue("ItemSize");
+			string fileName = get<FILE_LOCATION>(*ruleData);
+			friendlyName = get<FRIENDLY_NAME>(*ruleData);
+			itemSize = get<ITEM_SIZE>(*ruleData);
+			itemData = get<ITEM_DATA>(*ruleData);
+			sha256Hash = get<SHA256_HASH>(*ruleData);
 			EnumCreationTime();
-
-			hashRuleKey.Close();
-			hashRuleKey.Open(
-				HKEY_LOCAL_MACHINE,
-				policyPath + "\\SHA256",
-				KEY_READ);
-
-			sha256Hash = hashRuleKey.GetBinaryValue("ItemData");
-			hashRuleKey.Close();
 
 			WriteToRegistry(fileName, swappedOp);
 			get<MOD_STATUS>(*ruleData) = ModificationType::SWITCHED;
@@ -104,10 +81,6 @@ void HashRule::SwitchRule(const uintmax_t &fileSize, RuleDataPtr &ruleData)
 
 		SecPolicy::switchedRules++;
 	}
-	catch (const RegException &e)
-	{
-		cout << e.what() << endl;
-	}
 	catch (const exception &e)
 	{
 		cout << e.what() << endl;
@@ -117,41 +90,48 @@ void HashRule::SwitchRule(const uintmax_t &fileSize, RuleDataPtr &ruleData)
 void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 {
 	using namespace winreg;
+	
+	const string policyPath = [&]() noexcept
+	{
+		if (policy == SecOption::BLACKLIST)
+			return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes\)";
+		else
+			return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes\)";
+	} ();
+
+	RegKey tempKey(
+		HKEY_LOCAL_MACHINE,
+		policyPath,
+		DELETE
+	);
 
 	try
 	{
-		string policyPath = [&]()
-		{
-			if (policy == SecOption::BLACKLIST)
-				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes\)";
-			else
-				return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes\)";
-		} ();
-
-		RegKey tempKey(
-			HKEY_LOCAL_MACHINE,
-			policyPath,
-			DELETE
-		);
-
-		tempKey.DeleteKey(ruleGuid + "\\SHA256", KEY_WOW64_32KEY);
+		tempKey.DeleteKey(ruleGuid + R"(\SHA256)", KEY_WOW64_32KEY);
 		tempKey.DeleteKey(ruleGuid, KEY_WOW64_32KEY);
 
 		SecPolicy::removedRules++;
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << endl;
+		if (e.ErrorCode() == 2)
+			cout << '\n' << "Error removing rule: rule already removed";
+
+		else
+			cout << '\n' << e.what();
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cout << '\n' << e.what();
 	}
 }
 
 bool HashRule::CheckIfRuleOutdated(const uintmax_t &fileSize, 
 	RuleDataPtr& ruleData, bool updatingRule)
 {
+	if (!updateRules)
+		return false;
+
 	bool fileHashed = false;
 	bool fileChanged = false;
 	
@@ -385,8 +365,8 @@ void HashRule::EnumFileVersion(const string &fileName)
 	//https://stackoverflow.com/questions/940707/how-do-i-programmatically-get-the-version-of-a-dll-or-exe-file
 
 	LPCTSTR szVersionFile = fileName.c_str();
-	DWORD  verHandle = 0;
-	UINT   size = 0;
+	DWORD verHandle = 0;
+	UINT size = 0;
 	LPBYTE lpBuffer = nullptr;
 	const DWORD  verSize = GetFileVersionInfoSize(szVersionFile, &verHandle);
 
@@ -400,7 +380,7 @@ void HashRule::EnumFileVersion(const string &fileName)
 			{
 				if (size)
 				{
-					VS_FIXEDFILEINFO *verInfo = (VS_FIXEDFILEINFO *)lpBuffer;
+					const VS_FIXEDFILEINFO *verInfo = (VS_FIXEDFILEINFO *)lpBuffer;
 					if (verInfo->dwSignature == 0xfeef04bd)
 					{
 						// Doesn't matter if you are on 32 bit or 64 bit,
@@ -450,7 +430,7 @@ void HashRule::EnumFriendlyName(const string &fileName)
 		string originalName = fileName.substr(
 			fileName.rfind('\\') + 1,
 			fileName.length());
-		const int sizeOnDisk = (4096 * ((itemSize + 4096 - 1) / 4096)) / 1024;
+		const auto sizeOnDisk = (4096 * ((itemSize + 4096 - 1) / 4096)) / 1024;
 		
 		WIN32_FIND_DATA data;
 		HANDLE fileHandle = FindFirstFile(fileName.c_str(), &data);
@@ -537,7 +517,7 @@ void HashRule::HashDigests(const string &fileName)
 inline vector<BYTE> HashRule::convertStrToByte(string &str) noexcept
 {
 	vector<BYTE> vec;
-	for (int i = 0; i < str.length(); i += 2)
+	for (unsigned i = 0; i < str.length(); i += 2)
 	{
 		// Convert hex char to byte
 		if (str[i] >= '0' && str[i] <= '9') str[i] -= '0';

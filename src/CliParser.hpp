@@ -132,7 +132,7 @@ namespace AppSecPolicy
 		std::vector<std::string> fileArgs;
 
 	private:
-		void ToLower(std::string& fileName)
+		void ToLower(std::string& fileName) noexcept
 		{
 			for (auto &letter : fileName)
 				letter = std::move(tolower(letter));
@@ -194,7 +194,7 @@ namespace AppSecPolicy
 			("Create rules that block files")
 			| clara::detail::Opt(updatingRules)
 			["-u"]["--update-rules"]
-			("Update created rules off of file changes. If used with '-b' or '-w', rules already created will be updated")
+			("Scan for changes of files for created rules and update rules if files change.  If used with '-b' or '-w', rules already created will be updated")
 			| clara::detail::Opt(removingRules)
 			["-r"]["--remove"]
 			("Remove already created rules")
@@ -206,7 +206,7 @@ namespace AppSecPolicy
 			("Temporarily allow a directory")
 			| clara::detail::Opt(tempAllowExe, "executable")
 			["-e"]["--temp-execute-file"]
-			("Specify a dir to temporarily allow with -d, and use -e to specify what file to execute")
+			("Specify a dir to temporarily allow with '-d', and use '-e' to specify what file to execute")
 			| clara::detail::Opt(tempAllowParentDir, "executable")
 			["-a"]["--auto-allow-execute"]
 			("Temporarily allow dir of file entered, then execute file")

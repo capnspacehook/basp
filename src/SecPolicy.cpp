@@ -41,13 +41,122 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	secOption = op;
 	ruleType = rType;
 
-	for (const auto &path : paths)
+	for (const auto &file : paths)
 	{
 		enteredRules.emplace_back(
-			secOption, ruleType, path);
+			secOption, ruleType, file);
 	}
 
-	StartProcessing(paths);
+	try
+	{
+		vector<fs::path> regFiles;
+		vector<fs::path> directories;
+		for (const auto &file : paths)
+		{
+			fs::path filePath(file);
+			filePath.make_preferred();
+
+			if (fs::is_regular_file(filePath))
+				regFiles.emplace_back(filePath);
+
+			else if (fs::is_directory(filePath))
+				directories.emplace_back(filePath);
+
+			else
+			{
+				cerr << "\nCan't create hash rule for " <<
+					filePath.string();
+
+				exit(-1);
+			}
+		}
+
+		uintmax_t fileSize;
+		string action = [&]() noexcept
+		{
+			if (static_cast<bool>(secOption))
+				return "\nWhitelisting";
+
+			else
+				return "\nBlacklisting";
+		} ();
+
+		if (!regFiles.empty())
+		{
+			creatingSingleRule = true;
+			RuleProducer ruleProducer;
+
+
+			for (auto &file : regFiles)
+			{
+				fileSize = fs::file_size(file);
+				if (fileSize && fs::is_regular_file(file))
+				{
+					ruleProducer.ProcessFile(file, fileSize);
+					cout << action << ' ' << file << "...";
+				}
+
+				else
+				{
+					cerr << "\nCan't create hash rule for " <<
+						file.string();
+
+					exit(-1);
+				}
+
+				ModifyRules();
+				if (directories.empty())
+				{
+					RuleConsumer ruleConsumer(updateRules);
+					ruleConsumer.ConsumeRules();
+				}
+			}
+		}
+
+		if (!directories.empty())
+		{
+			creatingSingleRule = false;
+
+			if (ruleCheck)
+			{
+				ruleProducers.clear();
+				ruleConsumers.clear();
+			}
+
+			for (const auto &dir : directories)
+			{
+				dirItQueue.enqueue(make_pair(dir, fileSize));
+				cout << action << " files in " << dir << "...";
+			}
+
+			for (unsigned i = 0; i < initThreadCnt; i++)
+			{
+				if (i != 0)
+					Sleep(5);
+
+				ruleProducers.emplace_back(
+					&RuleProducer::ProduceRules,
+					RuleProducer());
+			}
+
+			ModifyRules();
+			for (auto &t : ruleProducers)
+				t.join();
+
+			for (auto &t : ruleConsumers)
+				t.join();
+
+			cout << '\n';
+		}
+	}
+	catch (const fs::filesystem_error &e)
+	{
+		cerr << e.what() << '\n';
+	}
+	catch (const exception &e)
+	{
+		cerr << e.what() << '\n';
+	}
 }
 
 //create a whitelisting rule, execute the file passed in, and delete the rule
@@ -64,7 +173,7 @@ void SecPolicy::TempRun(const string &path)
 		if (size > 0)
 		{
 			//create temporary hash rule
-			HashRule tempRule;
+			HashRule tempRule(updateRules);
 			auto tempRuleData = make_shared<RuleData>(RuleData());
 			get<SEC_OPTION>(*tempRuleData) = SecOption::WHITELIST;
 			get<RULE_TYPE>(*tempRuleData) = ruleType;
@@ -222,10 +331,10 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 				ModificationType::SWITCHED, 0ULL, tempRule));
 
 		ruleConsumers.clear();
-		for (int i = 0; i < maxThreads; i++)
+		for (unsigned i = 0; i < maxThreads; i++)
 			ruleConsumers.emplace_back(
 				&RuleConsumer::ConsumeRules,
-				RuleConsumer());
+				RuleConsumer(updateRules));
 
 		for (auto &t : ruleConsumers)
 			t.join();
@@ -275,11 +384,11 @@ void SecPolicy::UpdateRules(const vector<string> &paths)
 		}
 
 		fileCheckingNotDone = false;
-		for (int i = 0; i < initThreadCnt; i++)
+		for (unsigned i = 0; i < initThreadCnt; i++)
 		{
 			ruleConsumers.emplace_back(
 				&RuleConsumer::ConsumeRules,
-				RuleConsumer());
+				RuleConsumer(updateRules));
 		}
 
 		for (auto &t : ruleConsumers)
@@ -340,10 +449,10 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 		}
 	}
 
-	for (int i = 0; i < initThreadCnt; i++)
+	for (unsigned i = 0; i < initThreadCnt; i++)
 		ruleConsumers.emplace_back(
 			&RuleConsumer::RemoveRules,
-			RuleConsumer());
+			RuleConsumer(updateRules));
 
 	for (auto &t : ruleConsumers)
 		t.join();
@@ -379,18 +488,18 @@ void SecPolicy::CheckRules()
 	while (getline(ruleStrings, temp))
 		ruleStringQueue.enqueue(move(temp));
 
-	for (int i = 0; i < initThreadCnt; i++)
+	for (unsigned i = 0; i < initThreadCnt; i++)
 	{
 		ruleProducers.emplace_back(
 			&RuleProducer::ConvertRules,
 			RuleProducer());
 	}
 
-	for (int i = 0; i < initThreadCnt; i++)
+	for (unsigned i = 0; i < initThreadCnt; i++)
 	{
 		ruleConsumers.emplace_back(
 			&RuleConsumer::CheckRules,
-			RuleConsumer());
+			RuleConsumer(updateRules));
 	}
 
 	for (auto &t : ruleProducers)
@@ -421,7 +530,7 @@ void SecPolicy::CheckGlobalSettings()
 	{
 		RegKey policySettings(
 			HKEY_LOCAL_MACHINE,
-			"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
+			R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers)",
 			KEY_READ | KEY_WRITE);
 
 		string globalSettings = dataFileMan.GetGlobalSettings();
@@ -434,27 +543,16 @@ void SecPolicy::CheckGlobalSettings()
 		while (getline(iss, type, ','))
 			executableTypes.emplace_back(type);
 
-		vector<pair<string, DWORD>> keys = policySettings.EnumValues();
-
-		if (keys.size() < 5)
-		{
-			policySettings.SetDwordValue("AuthenticodeEnabled", 0);
-			policySettings.SetDwordValue("DefaultLevel", 262144);
-			policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
-			policySettings.SetDwordValue("PolicyScope", 0);
-			policySettings.SetDwordValue("TransparentEnabled", 1);
-		}
-
 		if (globalSettings != dataFileMan.GetCurrentPolicySettings())
 		{
-			cout << "Proceed with caution! Unauthorized changes have been made "
-				<< "to the global policy settings.\n"
-				<< "Correct settings were reapplied.\n";
+			cout << "\nProceed with caution! Unauthorized changes have been made "
+				<< "to the global policy settings."
+				<< "\nCorrect settings were reapplied.";
 
 			policySettings.SetDwordValue("AuthenticodeEnabled",
-				static_cast<int>(globalSettings[AUTHENTICODE_ENABLED] - '0'));
+				static_cast<DWORD>(globalSettings[AUTHENTICODE_ENABLED] - '0'));
 
-			int defaultLevel = static_cast<int>(globalSettings[DEFAULT_LEVEL] - '0');
+			int defaultLevel = static_cast<DWORD>(globalSettings[DEFAULT_LEVEL] - '0');
 			
 			if (defaultLevel == 1)
 				defaultLevel = 262144;
@@ -464,132 +562,19 @@ void SecPolicy::CheckGlobalSettings()
 			policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
 
 			policySettings.SetDwordValue("PolicyScope",
-				static_cast<int>(globalSettings[POLCIY_SCOPE] - '0'));
+				static_cast<DWORD>(globalSettings[POLCIY_SCOPE] - '0'));
 
 			policySettings.SetDwordValue("TransparentEnabled",
-				static_cast<int>(globalSettings[TRANSPARENT_ENABLED] - '0'));
+				static_cast<DWORD>(globalSettings[TRANSPARENT_ENABLED] - '0'));
 		}
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << '\n';
-	}
-}
-
-//detirmine whether file passed is a 
-//regular file or directory and process respectively
-void SecPolicy::StartProcessing(const vector<string> &files)
-{
-	try
-	{
-		vector<fs::path> regFiles;
-		vector<fs::path> directories;
-		for (const auto &file : files)
-		{
-			fs::path filePath(file);
-			filePath.make_preferred();
-
-			if (fs::is_regular_file(filePath))
-				regFiles.emplace_back(filePath);
-
-			else if (fs::is_directory(filePath))
-				directories.emplace_back(filePath);
-
-			else
-			{
-				cerr << "\nCan't create hash rule for " <<
-					filePath.string();
-
-				exit(-1);
-			}
-		}
-
-		uintmax_t fileSize;
-		string action = [&]()
-		{
-			if (static_cast<bool>(secOption))
-				return "\nWhitelisting";
-
-			else
-				return "\nBlacklisting";
-		} ();
-
-		if (!regFiles.empty())
-		{
-			creatingSingleRule = true;
-			RuleProducer ruleProducer;
-			RuleConsumer ruleConsumer;
-
-			for (auto &file : regFiles)
-			{
-				fileSize = fs::file_size(file);
-				if (fileSize && fs::is_regular_file(file))
-				{
-					ruleProducer.ProcessFile(file, fileSize);
-					cout << action << ' ' << file << "...";
-				}
-
-				else
-				{
-					cerr << "\nCan't create hash rule for " <<
-						file.string();
-
-					exit(-1);
-				}
-
-				ModifyRules();
-				if (directories.empty())
-					ruleConsumer.ConsumeRules();
-			}
-		}
-
-		if (!directories.empty())
-		{
-			creatingSingleRule = false;
-
-			if (ruleCheck)
-			{
-				ruleProducers.clear();
-				ruleConsumers.clear();
-			}
-
-			for (const auto &dir : directories)
-			{
-				dirItQueue.enqueue(make_pair(dir, fileSize));
-				cout << action << " files in " << dir << "...";
-			}
-
-			for (int i = 0; i < initThreadCnt; i++)
-			{
-				if (i != 0)
-					Sleep(5);
-
-				ruleProducers.emplace_back(
-					&RuleProducer::ProduceRules,
-					RuleProducer());
-			}
-
-			ModifyRules();
-			for (auto &t : ruleProducers)
-				t.join();
-
-			for (auto &t : ruleConsumers)
-				t.join();
-
-			cout << '\n';
-		}
-	}
-	catch (const fs::filesystem_error &e)
-	{
-		cerr << e.what() << '\n';
-	}
-	catch (const exception &e)
-	{
-		cerr << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 }
 
@@ -663,7 +648,7 @@ void SecPolicy::ModifyRules()
 						|| ruleConsumers.size() < initThreadCnt + doneProducers))
 						ruleConsumers.emplace_back(
 							&RuleConsumer::ConsumeRules,
-							RuleConsumer());
+							RuleConsumer(updateRules));
 				}
 			}
 		} while (filesLeft);
@@ -773,7 +758,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 						ruleQueue.enqueue(move(make_tuple(
 							ModificationType::REMOVED, 0ULL, make_shared<RuleData>(rule))));
 
-					RuleConsumer ruleConsumer;
+					RuleConsumer ruleConsumer(updateRules);
 					ruleConsumer.RemoveRules();
 
 					dataFileMan.RemoveDeletedFiles(deletedFiles);

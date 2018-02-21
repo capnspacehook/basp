@@ -17,7 +17,7 @@ namespace Protected_Ptr
 	{
 	public:
 
-		std::size_t getSize(const T& obj) const { return sizeof(obj); }
+		DWORD getSize(const T& obj) const { return sizeof(obj); }
 		//return reference to raw data
 		T* getRawData(T& obj) const { return &obj; }
 		//convert data into byte array
@@ -35,9 +35,9 @@ namespace Protected_Ptr
 	class StringSerializer
 	{
 	public:
-		std::size_t getSize(const std::string& str) const { return sizeof(str); }
-		std::string* getRawData(std::string& str) const { return &str; }	
-		std::unique_ptr<byte*> serialize(std::string& str) const
+		DWORD getSize(const std::string& str) const noexcept { return sizeof(str); }
+		std::string* getRawData(std::string& str) const noexcept { return &str; }	
+		std::unique_ptr<byte*> serialize(const std::string& str) const
 		{
 			const auto size = str.size();
 			auto out = std::make_unique<byte*>(new byte[size]);
@@ -51,7 +51,7 @@ namespace Protected_Ptr
 	class SecByteBlockSerializer
 	{
 	public:
-		std::size_t getSize(const CryptoPP::SecByteBlock& blk) const { return blk.size(); }
+		DWORD getSize(const CryptoPP::SecByteBlock& blk) const { return blk.size(); }
 		byte* getRawData(CryptoPP::SecByteBlock& blk) const { return blk.data(); }
 		std::unique_ptr<byte*> serialize(CryptoPP::SecByteBlock& blk) const
 		{
@@ -94,9 +94,9 @@ namespace Protected_Ptr
 		{
 			if (protectedData)
 			{ 
-				size_t mod;
-				size_t dataBlockSize;
-				size_t dataSize = size();
+				DWORD mod;
+				DWORD dataBlockSize;
+				DWORD dataSize = size();
 
 				if (dataSize > 0)
 				{
@@ -248,7 +248,7 @@ namespace Protected_Ptr
 			ProtectMemory(false);
 			return serializer.serialize(*protectedData);
 		}
-		std::size_t size() const { return serializer.getSize(*protectedData); }
+		DWORD size() const { return serializer.getSize(*protectedData); }
 
 		S serializer;
 		std::unique_ptr<T> protectedData;

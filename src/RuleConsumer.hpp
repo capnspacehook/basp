@@ -8,7 +8,10 @@ namespace AppSecPolicy
 	class RuleConsumer
 	{
 	public:
-		RuleConsumer() { consumerCount++; }
+		explicit RuleConsumer(bool updateRules) : hashRule(updateRules)
+		{
+			consumerCount++; 
+		}
 
 		void ConsumeRules()
 		{
@@ -54,7 +57,7 @@ namespace AppSecPolicy
 		{
 			bool rulesLeft;
 			RuleData ruleData;
-			moodycamel::ConsumerToken ruleCheckCtok(SecPolicy::ruleCheckQueue);
+			const moodycamel::ConsumerToken ruleCheckCtok(SecPolicy::ruleCheckQueue);
 
 			do
 			{
