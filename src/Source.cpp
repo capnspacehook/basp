@@ -11,7 +11,7 @@ using namespace std;
 using namespace AppSecPolicy;
 
 void CheckElevated();
-bool RemovePrivilege(const string&);
+bool RemovePrivilege(const char*);
 
 int main(int argc, char *argv[])
 {
@@ -78,7 +78,7 @@ void CheckElevated()
 	}
 }
 
-bool RemovePrivilege(const string& privName)
+bool RemovePrivilege(const char* privName)
 {
 	HANDLE tokenH;
 	HANDLE localProc = GetCurrentProcess();
@@ -93,7 +93,7 @@ bool RemovePrivilege(const string& privName)
 
 	if (!LookupPrivilegeValue(
 		nullptr,            // lookup privilege on local system
-		privName.c_str(),   // privilege to lookup 
+		privName,   // privilege to lookup 
 		&luid))        // receives LUID of privilege
 	{
 		cerr << "LookupPrivilegeValue error: " << GetLastError() << '\n';

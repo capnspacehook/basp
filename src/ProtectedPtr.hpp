@@ -10,7 +10,7 @@
 
 namespace Protected_Ptr
 {
-	//converts data of type T to a byte array, 
+	//converts data of type T to a BYTE array, 
 	//gets size of data, and returns reference to raw data
 	template <class T>
 	class PrimitiveSerializer
@@ -21,10 +21,10 @@ namespace Protected_Ptr
 		//return reference to raw data
 		T* getRawData(T& obj) const { return &obj; }
 		//convert data into byte array
-		std::unique_ptr<byte*> serialize(T& obj) const
+		std::unique_ptr<BYTE*> serialize(T& obj) const
 		{
 			const auto size = getSize(obj);
-			auto out = std::make_unique<byte*>(new byte[size]);
+			auto out = std::make_unique<BYTE*>(new BYTE[size]);
 			std::memcpy(*out, getRawData(obj), size);
 			return out;
 		}
@@ -37,10 +37,10 @@ namespace Protected_Ptr
 	public:
 		DWORD getSize(const std::string& str) const noexcept { return sizeof(str); }
 		std::string* getRawData(std::string& str) const noexcept { return &str; }	
-		std::unique_ptr<byte*> serialize(const std::string& str) const
+		std::unique_ptr<BYTE*> serialize(const std::string& str) const
 		{
 			const auto size = str.size();
-			auto out = std::make_unique<byte*>(new byte[size]);
+			auto out = std::make_unique<BYTE*>(new BYTE[size]);
 			std::memcpy(*out, str.c_str(), size);
 			return out;
 		}
@@ -52,10 +52,10 @@ namespace Protected_Ptr
 	{
 	public:
 		DWORD getSize(const CryptoPP::SecByteBlock& blk) const { return blk.size(); }
-		byte* getRawData(CryptoPP::SecByteBlock& blk) const { return blk.data(); }
-		std::unique_ptr<byte*> serialize(CryptoPP::SecByteBlock& blk) const
+		BYTE* getRawData(CryptoPP::SecByteBlock& blk) const { return blk.data(); }
+		std::unique_ptr<BYTE*> serialize(CryptoPP::SecByteBlock& blk) const
 		{
-			return std::make_unique<byte*>(getRawData(blk));
+			return std::make_unique<BYTE*>(getRawData(blk));
 		}
 
 		bool overwriteOnExit = false;
@@ -201,7 +201,7 @@ namespace Protected_Ptr
 			volatile auto otherData = rhs.serializeData();
 			rhs.ProtectMemory(true);
 
-			volatile byte result = 0;
+			volatile BYTE result = 0;
 			for (int i = 0; i < sizeof(*protectedData); i++)
 			{
 				result |= thisData[i] ^ otherData[i];
@@ -243,7 +243,7 @@ namespace Protected_Ptr
 	private:
 		//returns reference to data pointed to
 		void* getRawPtr() { return serializer.getRawData(*protectedData); }
-		std::unique_ptr<byte*> serializeData()
+		std::unique_ptr<BYTE*> serializeData()
 		{
 			ProtectMemory(false);
 			return serializer.serialize(*protectedData);

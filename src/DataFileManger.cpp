@@ -136,7 +136,7 @@ void DataFileManager::ClosePolicyFile()
 		//prepend dummy data that will be skipped
 		policyData->insert(0, KEY_SIZE, 'A');
 	}
-	
+
 	StringSource updatedData(*policyData, false);
 	//skip part containing the salt
 	updatedData.Pump(KEY_SIZE);
@@ -354,90 +354,83 @@ VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &pare
 	bool exactRule = false;
 	VecStrConstIt foundRule;
 
-	//returns true if 'needle' is a subdir of 'haystack'
-	auto isSubDir = [&](const auto &needle, const auto &haystack)
+	const auto exactSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
+
+	if (exactSearchResult != userRulePaths.end() && *exactSearchResult == path)
 	{
-		fs::path needlePath(needle);
-		const auto needleParentNum = distance(needlePath.begin(), needlePath.end()) - 2;
-
-		for (int i = 0; i < needleParentNum; i++)
-		{
-			needlePath = move(needlePath.parent_path());
-			if (needlePath.string() == haystack)
-				return true;
-		}
-
-		return false;
-	};
-
-	auto exactSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
-
-	if (exactSearchResult != userRulePaths.end() && !(path < *exactSearchResult))
-	{
-		if (*exactSearchResult == path)
-			exactRule = true;
-		
+		exactRule = true;
 		foundRule = exactSearchResult;
 		validRule = true;
 	}
 
-	if (!exactRule)
-	{
-		auto subDirSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
-			[&path](const string &str1, const string &str2) noexcept
-			{
-				if (auto cmp = strncmp(str1.data(), str2.data(), str1.size()))
-					return cmp < 0;
-
-				return false;
-			});
-
-		if (subDirSearchResult != userRulePaths.end() && !(path < *subDirSearchResult))
+	const auto subDirSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
+		[](const string &str1, const string &str2) noexcept
 		{
-			if (*subDirSearchResult != path && isSubDir(path, *subDirSearchResult))
-			{
-				if (subDirSearchResult != exactSearchResult)
-					existingSubdir = true;
+			return str1 < str2.substr(0, str1.length());
+		});
 
-				else
-					nonExistingSubdir = true;
-
-				parentOp = static_cast<SecOption>(
-					userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
-
-				foundRule = subDirSearchResult;
-				validRule = true;
-			}
-
-			else if (*subDirSearchResult != path && isSubDir(*subDirSearchResult, path))
-			{
-				parentDir = true;
-				parentOp = static_cast<SecOption>(
-					userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
-
-				foundRule = subDirSearchResult;
-				validRule = true;
-			}
-
-			else if (*subDirSearchResult == path)
-			{
-				foundRule = subDirSearchResult;
-				validRule = true;
-			}
+	if (subDirSearchResult != userRulePaths.end() && !(path < *subDirSearchResult) &&
+		*subDirSearchResult != path && IsSubDir(path, *subDirSearchResult))
+	{
+		if (exactRule)
+		{
+			existingSubdir = true;
+			foundRule = exactSearchResult;
 		}
 
-		else if (subDirSearchResult != userRulePaths.end() && isSubDir(*subDirSearchResult, path))
+		else
+		{
+			nonExistingSubdir = true;
+			foundRule = subDirSearchResult;
+		}
+
+		parentOp = static_cast<SecOption>(
+			userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
+
+		validRule = true;
+	}
+
+	else 
+	{
+		const auto parentSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
+			[](const string &str1, const string &str2) noexcept
+			{
+				if (str1 == str2)
+					return true;
+
+				return str1.substr(0, str2.length()) < str2;
+			});
+
+		if (parentSearchResult != userRulePaths.end() && path < *parentSearchResult &&
+			*parentSearchResult != path && IsSubDir(*parentSearchResult, path))
 		{
 			parentDir = true;
 			parentOp = static_cast<SecOption>(
-				userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
+				userRuleInfo[distance(userRulePaths.begin(), parentSearchResult)][SEC_OPTION] - '0');
 
-			foundRule = subDirSearchResult;
+			foundRule = parentSearchResult;
 			validRule = true;
 		}
 	}
+	
 
 	return foundRule;
+}
+
+//returns true if 'needle' is a subdir of 'haystack'
+bool DataFileManager::IsSubDir(const string &needle, const string &haystack) const
+{
+	fs::path needlePath(needle);
+	const auto needleParentNum = distance(needlePath.begin(), needlePath.end()) - 2;
+
+	for (int i = 0; i < needleParentNum; i++)
+	{
+		needlePath = move(needlePath.parent_path());
+		if (needlePath.string() == haystack)
+			return true;
+	}
+
+	return false;
 }
 
 vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
@@ -473,30 +466,46 @@ vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
 	return rulesInDir;
 }
 
-pair<VecStrConstIt, VecStrConstIt> DataFileManager::FindUserRulesInDir(const string &path) const
+optional<pair<VecStrConstIt, VecStrConstIt>> DataFileManager::FindUserRulesInDir(const string &path) const
 {
-	pair<VecStrConstIt, VecStrConstIt> rulesInDir;
+	bool subDirsExist = true;
+	optional<pair<VecStrConstIt, VecStrConstIt>> rulesInDir;
 	
 	auto foundRulesBegin = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
 
-	auto foundRulesEnd = upper_bound(foundRulesBegin, userRulePaths.end(), path,
-		[&path](string const& str1, string const& str2) noexcept
-		{
-			// compare UP TO the length of the prefix and no farther
-			if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
-				return cmp < 0;
-
-			// The strings are equal to the length of the prefix so
-			// behave as if they are equal. That means s1 < s2 == false
-			return false;
-		});
-
-	if ((foundRulesBegin != userRulePaths.end() || foundRulesEnd != userRulePaths.end())
-		&& (foundRulesBegin != userRulePaths.begin() || foundRulesEnd != userRulePaths.begin()))
+	if (*foundRulesBegin == path)
 	{
-		rulesInDir = make_pair(
-			userRuleInfo.begin() + distance(userRulePaths.begin(), foundRulesBegin),
-			userRuleInfo.begin() + distance(userRulePaths.begin(), foundRulesEnd));
+		if (next(foundRulesBegin) != userRulePaths.end() && IsSubDir(*next(foundRulesBegin), path))
+			advance(foundRulesBegin, 1);
+
+		else
+			subDirsExist = false;
+	}
+	
+	if (subDirsExist)
+	{
+		auto foundRulesEnd = upper_bound(foundRulesBegin, userRulePaths.end(), path,
+			[&path](string const& str1, string const& str2) noexcept
+			{
+				// compare UP TO the length of the prefix and no farther
+				if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
+					return cmp < 0;
+
+				// The strings are equal to the length of the prefix so
+				// behave as if they are equal. That means s1 < s2 == false
+				return false;
+			});
+
+		if (foundRulesBegin == foundRulesEnd && foundRulesEnd != userRulePaths.end())
+			advance(foundRulesEnd, 1);
+
+		if ((foundRulesBegin != userRulePaths.end() || foundRulesEnd != userRulePaths.end())
+			&& (foundRulesBegin != userRulePaths.begin() || foundRulesEnd != userRulePaths.begin()))
+		{
+			rulesInDir.emplace(make_pair(
+				userRuleInfo.begin() + distance(userRulePaths.begin(), foundRulesBegin),
+				userRuleInfo.begin() + distance(userRulePaths.begin(), foundRulesEnd)));
+		}
 	}
 
 	return rulesInDir;
@@ -714,11 +723,15 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 			else if (result == RuleFindResult::PARENT_DIR_TO_BE_RM)
 			{
 				auto deletedRules = FindUserRulesInDir(location);
-				const auto start = distance(userRuleInfo.cbegin(), deletedRules.first);
-				const auto end = distance(userRuleInfo.cbegin(), deletedRules.second);
 
-				for (auto i = start; i < end; i++)
-					userRuleInfo[i][SEC_OPTION] = static_cast<char>(option) + '0';
+				if (deletedRules)
+				{
+					const auto start = distance(userRuleInfo.cbegin(), deletedRules->first);
+					const auto end = distance(userRuleInfo.cbegin(), deletedRules->second);
+
+					for (auto i = start; i < end; i++)
+						userRuleInfo[i][SEC_OPTION] = static_cast<char>(option) + '0';
+				}
 			}
 				
 			else
@@ -735,11 +748,14 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 				+ '|' + to_string(static_cast<int>(type))
 				+ '|' + location);
 
-			auto oldRules = FindUserRulesInDir(location);
-			userRuleInfo.erase(oldRules.first, oldRules.second);
+			auto subDirs = FindUserRulesInDir(location);
 
-			rulesNotSorted = true;
-			userRulesNotSorted = true;
+			if (subDirs)
+			{
+				userRuleInfo.erase(subDirs->first, subDirs->second);
+				rulesNotSorted = true;
+				userRulesNotSorted = true;
+			}
 		}
 
 		else if (result == RuleFindResult::NO_EXIST_SUBDIR_DIFF_OP)
@@ -766,12 +782,20 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 				userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
 		}
 
-		
-
 		else if (result == RuleFindResult::DIFF_SEC_OP)
 		{
 			updatedRules.emplace_back(location);
 			userRuleInfo[index][SEC_OPTION] = static_cast<char>(option) + '0';
+
+			//make sure we remove any subdirs if they exist
+			auto subDirs = FindUserRulesInDir(location);
+
+			if (subDirs)
+			{
+				userRuleInfo.erase(subDirs->first, subDirs->second);
+				rulesNotSorted = true;
+				userRulesNotSorted = true;
+			}
 		}
 
 		else if (result == RuleFindResult::RM_SUBDIR)
@@ -984,7 +1008,7 @@ void DataFileManager::CheckPassword(string& guessPwd)
 			kdfHash->data(),
 			kdfHash->size(),
 			0,
-			(byte*)guessPwd.data(),
+			(BYTE*)guessPwd.data(),
 			guessPwd.size(),
 			kdfSalt->data(),
 			kdfSalt->size(),
@@ -1052,7 +1076,7 @@ void DataFileManager::SetNewPassword(string& guessPwd)
 		kdfHash->data(),
 		kdfHash->size(),
 		0,
-		(byte*)newPass1.data(),
+		(BYTE*)newPass1.data(),
 		newPass1.size(),
 		kdfSalt->data(),
 		kdfSalt->size(),

@@ -115,7 +115,7 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 	catch (const RegException &e)
 	{
 		if (e.ErrorCode() == 2)
-			cout << '\n' << "Error removing rule: rule already removed";
+			cout << '\n' << "Error removing rule: rule does not exist";
 
 		else
 			cout << '\n' << e.what();
@@ -232,7 +232,7 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 			hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));
 
 			SecPolicy::createdRules++;
-			cout << "The rule for " << ruleName << " was deleted\n";
+			cout << "\nThe rule for " << ruleName << " was deleted";
 			return;
 		}
 
@@ -310,7 +310,7 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 			hashRuleKey.SetQwordValue("LastModified", get<LAST_MODIFIED>(ruleData));
 
 			SecPolicy::updatedRules++;
-			cout << "The rule for " << ruleName << " was modified\n";
+			cout << "\nThe rule for " << ruleName << " was modified";
 			return;
 		}
 
@@ -351,11 +351,11 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << endl;
+		cerr << '\n' << e.what();
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cerr << '\n' << e.what();
 	}
 }
 

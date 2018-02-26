@@ -765,7 +765,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 				}
 			}
 
-			if (removedRules)
+			if (removedRules && removedRules != switchedRules)
 				dataFileMan.RemoveOldEntries();
 
 			dataFileMan.WriteChanges();

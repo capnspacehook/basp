@@ -1,6 +1,8 @@
 #include "AppSecPolicy.hpp"
 #include "ProtectedPtr.hpp"
 #include "include\Crypto++\aes.h"
+
+#include <optional>
 #pragma once
 
 using CryptoPP::AES;
@@ -91,9 +93,10 @@ namespace AppSecPolicy
 			const std::string&, std::size_t&, bool&) const;
 		VecStrConstIt FindUserRuleHelper(const std::string&, bool&, bool&, bool&,
 			SecOption&, bool&) const;
-		std::pair<VecStrConstIt, VecStrConstIt> FindUserRulesInDir(const std::string&) const;
-		
+		bool IsSubDir(const std::string &needle, const std::string &haystack) const;
+		std::optional<std::pair<VecStrConstIt, VecStrConstIt>> FindUserRulesInDir(const std::string&) const;
 		void SortRules();
+		
 		const unsigned iterations = 1000;	//iterations for PBKDF2
 		const unsigned TAG_SIZE = AES::BLOCKSIZE;
 		const unsigned KEY_SIZE = AES::MAX_KEYLENGTH;

@@ -20,9 +20,9 @@ namespace AppSecPolicy
 			std::string fileName;
 			std::string extension;
 			
-			moodycamel::ProducerToken dirPtok(SecPolicy::dirItQueue);
+			const moodycamel::ProducerToken dirPtok(SecPolicy::dirItQueue);
 			moodycamel::ConsumerToken dirCtok(SecPolicy::dirItQueue);
-			moodycamel::ProducerToken fileCheckPtok(SecPolicy::fileCheckQueue);
+			const moodycamel::ProducerToken fileCheckPtok(SecPolicy::fileCheckQueue);
 
 			while (SecPolicy::dirItQueue.try_dequeue(dirCtok, dirInfo))
 			{
@@ -94,7 +94,7 @@ namespace AppSecPolicy
 			std::string temp;
 			RuleData ruleData;
 			moodycamel::ConsumerToken ruleStrCtok(SecPolicy::ruleStringQueue);
-			moodycamel::ProducerToken ruleCheckPtoc(SecPolicy::ruleCheckQueue);
+			const moodycamel::ProducerToken ruleCheckPtoc(SecPolicy::ruleCheckQueue);
 
 			while (SecPolicy::ruleStringQueue.try_dequeue(ruleStrCtok, temp))
 			{
