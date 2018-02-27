@@ -16,6 +16,7 @@ bool RemovePrivilege(const char*);
 int main(int argc, char *argv[])
 {
 	CheckElevated();
+	RemovePrivilege("SeAssignPrimaryTokenPrivilege");
 	RemovePrivilege("SeCreateTokenPrivilege");
 	RemovePrivilege("SeDebugPrivilege");
 	RemovePrivilege("SeIncreaseQuotaPrivilege");

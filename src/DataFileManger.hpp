@@ -124,7 +124,6 @@ namespace AppSecPolicy
 		mutable bool passwordReset = false;
 		bool policyDataModified = false;
 
-		bool rulesNotSorted = true;
 		bool userRulesNotSorted = true;
 
 		std::vector<std::string> executableTypes = {

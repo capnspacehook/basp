@@ -196,11 +196,11 @@ string DataFileManager::GetCurrentPolicySettings() const
 	}
 	catch (const RegException &e)
 	{
-		cerr << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 	catch (const exception &e)
 	{
-		cerr << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 }
 
@@ -440,15 +440,9 @@ vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
 	auto foundRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), path);
 
 	auto foundRulesEnd = upper_bound(foundRulesBegin, rulePaths.end(), path,
-		[&path](string const& str1, string const& str2) noexcept
+		[](const string &str1, const string &str2) noexcept
 		{
-			// compare UP TO the length of the prefix and no farther
-			if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
-				return cmp < 0;
-
-			// The strings are equal to the length of the prefix so
-			// behave as if they are equal. That means s1 < s2 == false
-			return false;
+			return str1 < str2.substr(0, str1.length());
 		});
 
 	if ((foundRulesBegin != rulePaths.end() || foundRulesEnd != rulePaths.end())
@@ -624,7 +618,6 @@ void DataFileManager::SortRules()
 		}
 
 		rulesAdded = false;
-		rulesNotSorted = false;
 	}
 }
 
@@ -676,7 +669,6 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 	string location;
 	size_t index;
 
-	rulesNotSorted = false;
 	userRulesNotSorted = false;
 	bool parentDiffOp = false;
 
@@ -696,7 +688,6 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 				+ '|' + to_string(static_cast<int>(type))
 				+ '|' + location);
 			
-			rulesNotSorted = true;
 			userRulesNotSorted = true;
 		}
 
@@ -753,7 +744,6 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 			if (subDirs)
 			{
 				userRuleInfo.erase(subDirs->first, subDirs->second);
-				rulesNotSorted = true;
 				userRulesNotSorted = true;
 			}
 		}
@@ -793,7 +783,6 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 			if (subDirs)
 			{
 				userRuleInfo.erase(subDirs->first, subDirs->second);
-				rulesNotSorted = true;
 				userRulesNotSorted = true;
 			}
 		}
@@ -905,15 +894,9 @@ void DataFileManager::RemoveOldEntries()
 			auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), rule);
 
 			auto removedRulesEnd = upper_bound(removedRulesBegin, rulePaths.end(), rule,
-				[&rule](string const& str1, string const& str2) noexcept
+				[](const string &str1, const string &str2) noexcept
 				{
-					// compare UP TO the length of the prefix and no farther
-					if (auto cmp = strncmp(str1.data(), str2.data(), rule.size()))
-						return cmp < 0;
-
-					// The strings are equal to the length of the prefix so
-					// behave as if they are equal. That means s1 < s2 == false
-					return false;
+					return str1 < str2.substr(0, str1.length());
 				});
 
 			auto ruleInfoRange = make_pair(
@@ -928,27 +911,7 @@ void DataFileManager::RemoveOldEntries()
 
 void DataFileManager::WriteChanges()
 {
-	if (userRulesNotSorted)
-		sort(userRuleInfo.begin(), userRuleInfo.end(),
-			[](const string &str1, const string &str2)
-			{
-				return str1.substr(RULE_PATH_POS,
-					str1.length())
-					< str2.substr(RULE_PATH_POS,
-						str2.length());
-			});
-
-	if (rulesNotSorted)
-	{
-		sort(ruleInfo.begin(), ruleInfo.end(),
-			[](const string &str1, const string &str2)
-			{
-				return str1.substr(RULE_PATH_POS,
-					str1.find("|{") - 4)
-					< str2.substr(RULE_PATH_POS,
-						str2.find("|{") - 4);
-			});
-	}
+	SortRules();
 
 	policyData->clear();
 

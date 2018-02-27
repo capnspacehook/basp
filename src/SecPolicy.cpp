@@ -74,18 +74,38 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 		uintmax_t fileSize;
 		string action = [&]() noexcept
 		{
-			if (static_cast<bool>(secOption))
-				return "\nWhitelisting";
+			if (!updateRules)
+			{
+				if (static_cast<bool>(secOption))
+					return "\nWhitelisting files in ";
+
+				else
+					return "\nBlacklisting files in ";
+			}
 
 			else
-				return "\nBlacklisting";
+			{
+				if (static_cast<bool>(secOption))
+					return "\nWhitelisting files and updating rules in ";
+
+				else
+					return "\nBlacklisting files and updating rules in ";
+			}
 		} ();
 
 		if (!regFiles.empty())
 		{
+			string regFileAction = [&]() noexcept
+			{
+				if (static_cast<bool>(secOption))
+					return "\nWhitelisting ";
+
+				else
+					return "\nBlacklisting ";
+			} ();
+
 			creatingSingleRule = true;
 			RuleProducer ruleProducer;
-
 
 			for (auto &file : regFiles)
 			{
@@ -93,7 +113,7 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 				if (fileSize && fs::is_regular_file(file))
 				{
 					ruleProducer.ProcessFile(file, fileSize);
-					cout << action << ' ' << file << "...";
+					cout << regFileAction << file << "...";
 				}
 
 				else
@@ -126,7 +146,7 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 			for (const auto &dir : directories)
 			{
 				dirItQueue.enqueue(make_pair(dir, fileSize));
-				cout << action << " files in " << dir << "...";
+				cout << action << dir << "...";
 			}
 
 			for (unsigned i = 0; i < initThreadCnt; i++)
@@ -151,11 +171,11 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	}
 	catch (const fs::filesystem_error &e)
 	{
-		cerr << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 	catch (const exception &e)
 	{
-		cerr << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 }
 
@@ -435,8 +455,8 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 		else if (fs::is_regular_file(file))
 		{
 			RuleData ruleData;
-			if (dataFileMan.FindRule(secOption, ruleType, file, ruleData)
-				!= RuleFindResult::NO_MATCH)
+			if (auto result = dataFileMan.FindRule(secOption, ruleType, file, ruleData);
+				result != RuleFindResult::NO_MATCH && result != RuleFindResult::REMOVED)
 			{
 				cout << "\nRemoving rule for " << file << "...";
 

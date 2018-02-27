@@ -20,6 +20,19 @@ namespace AppSecPolicy
 
 			else if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules || !tempAllowFile.empty() || !tempAllowDir.empty() || !tempAllowParentDir.empty() || checkRules))
 			{
+				std::cout << "\n\n" << R"(
+	     ___          ___          ___                  
+	    /  /\        /  /\        /  /\         ___     
+	   /  /::\      /  /::\      /  /::\       /  /\    
+	  /  /:/\:\    /  /:/\:\    /__/:/\:\     /  /::\   
+	 /  /::\ \:\  /  /::\ \:\  _\_ \:\ \:\   /  /:/\:\  
+	/__/:/\:\_\:|/__/:/\:\_\:\/__/\ \:\ \:\ /  /::\ \:\ 
+	\  \:\ \:\/:/\__\/  \:\/:/\  \:\ \:\_\//__/:/\:\_\:\
+	 \  \:\_\::/      \__\::/  \  \:\_\:\  \__\/  \:\/:/
+	  \  \:\/:/       /  /:/    \  \:\/:/       \  \::/ 
+	   \__\::/       /__/:/      \  \::/         \__\/  
+	                 \__\/        \__\/                 )" << "\n\n";
+
 				std::cout << "Better Application Security Policy\n"
 					<< "https://github.com/capnspacehook/Better-Application-Security-Policy\n\n"
 					<< parser << '\n'
@@ -139,6 +152,7 @@ namespace AppSecPolicy
 		}
 		inline void PrintError(const char* error)
 		{
+			
 			std::cout << "Command line error: " << error << "\n\n";
 
 			std::exit(-1);

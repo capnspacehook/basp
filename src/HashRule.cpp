@@ -98,15 +98,17 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 		else
 			return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes\)";
 	} ();
-
-	RegKey tempKey(
-		HKEY_LOCAL_MACHINE,
-		policyPath,
-		DELETE
-	);
-
+	
 	try
 	{
+		RegKey tempKey;
+		if (!tempKey.Open(HKEY_LOCAL_MACHINE, policyPath, DELETE))
+		{
+			cout << "\nError removing rule: rule does not exist";
+			SecPolicy::skippedRules++;
+			return;
+		}
+	
 		tempKey.DeleteKey(ruleGuid + R"(\SHA256)", KEY_WOW64_32KEY);
 		tempKey.DeleteKey(ruleGuid, KEY_WOW64_32KEY);
 
@@ -114,11 +116,7 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 	}
 	catch (const RegException &e)
 	{
-		if (e.ErrorCode() == 2)
-			cout << '\n' << "Error removing rule: rule does not exist";
-
-		else
-			cout << '\n' << e.what();
+		cout << '\n' << e.what();
 	}
 	catch (const exception &e)
 	{
@@ -187,8 +185,9 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 	using namespace winreg;
 	
 	bool ruleModified = false;
+	bool ruleDeleted = false;
 	auto policy = get<SEC_OPTION>(ruleData);
-	string policyPath = [&]()
+	string policyPath = [&]() noexcept
 	{
 		if (policy == SecOption::BLACKLIST)
 			return R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes\)" + get<RULE_GUID>(ruleData);
@@ -201,14 +200,7 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 
 	try
 	{
-		hashRuleKey.Open(
-			HKEY_LOCAL_MACHINE,
-			policyPath,
-			KEY_READ | KEY_WRITE);
-	}
-	catch (const RegException &e)
-	{
-		if (e.ErrorCode() == 2)
+		if (!hashRuleKey.Open(HKEY_LOCAL_MACHINE, policyPath, KEY_READ | KEY_WRITE))
 		{
 			hashRuleKey.Create(
 				HKEY_LOCAL_MACHINE,
@@ -231,75 +223,45 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 			hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);
 			hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));
 
-			SecPolicy::createdRules++;
-			cout << "\nThe rule for " << ruleName << " was deleted";
-			return;
+			ruleDeleted = true;
 		}
 
 		else
 		{
-			cout << e.what() << endl;
-			return;
-		}
-	}
-	catch (const exception &e)
-	{
-		cout << e.what() << endl;
-	}
+			if (get<FRIENDLY_NAME>(ruleData) != hashRuleKey.GetStringValue("FriendlyName"))
+			{
+				ruleModified = true;
+				hashRuleKey.SetStringValue("FriendlyName", get<FRIENDLY_NAME>(ruleData));
+			}
 
-	try
-	{
-		if (get<FRIENDLY_NAME>(ruleData) != hashRuleKey.GetStringValue("FriendlyName"))
-		{
-			ruleModified = true;
-			hashRuleKey.SetStringValue("FriendlyName", get<FRIENDLY_NAME>(ruleData));
-		}
+			if (hashAlg != hashRuleKey.GetDwordValue("HashAlg"))
+			{
+				ruleModified = true;
+				hashRuleKey.SetDwordValue("HashAlg", hashAlg);
+			}
 
-		if (hashAlg != hashRuleKey.GetDwordValue("HashAlg"))
-		{
-			ruleModified = true;
-			hashRuleKey.SetDwordValue("HashAlg", hashAlg);
-		}
+			if (get<ITEM_DATA>(ruleData) != hashRuleKey.GetBinaryValue("ItemData"))
+			{
+				ruleModified = true;
+				hashRuleKey.SetBinaryValue("ItemData", get<ITEM_DATA>(ruleData));
+			}
 
-		if (get<ITEM_DATA>(ruleData) != hashRuleKey.GetBinaryValue("ItemData"))
-		{
-			ruleModified = true;
-			hashRuleKey.SetBinaryValue("ItemData", get<ITEM_DATA>(ruleData));
-		}
+			if (get<ITEM_SIZE>(ruleData) != hashRuleKey.GetQwordValue("ItemSize"))
+			{
+				ruleModified = true;
+				hashRuleKey.SetQwordValue("ItemSize", get<ITEM_SIZE>(ruleData));
+			}
 
-		if (get<ITEM_SIZE>(ruleData) != hashRuleKey.GetQwordValue("ItemSize"))
-		{
-			ruleModified = true;
-			hashRuleKey.SetQwordValue("ItemSize", get<ITEM_SIZE>(ruleData));
+			if (get<LAST_MODIFIED>(ruleData) != hashRuleKey.GetQwordValue("LastModified"))
+			{
+				ruleModified = true;
+				hashRuleKey.SetQwordValue("LastModified", get<LAST_MODIFIED>(ruleData));
+			}
 		}
-
-		if (get<LAST_MODIFIED>(ruleData) != hashRuleKey.GetQwordValue("LastModified"))
-		{
-			ruleModified = true;
-			hashRuleKey.SetQwordValue("LastModified", get<LAST_MODIFIED>(ruleData));
-		}
-	}
-	catch (const RegException &e)
-	{
-		cout << e.what() << endl;
-	}
-	catch (const exception &e)
-	{
-		cout << e.what() << endl;
-	}
-
-	try
-	{
+	
 		hashRuleKey.Close();
-		hashRuleKey.Open(
-			HKEY_LOCAL_MACHINE,
-			policyPath + "\\SHA256",
-			KEY_READ | KEY_WRITE);
-
-	}
-	catch (const RegException &e)
-	{
-		if (e.ErrorCode() == 2)
+		
+		if (!hashRuleKey.Open(HKEY_LOCAL_MACHINE, policyPath + R"(\SHA256)", KEY_READ | KEY_WRITE))
 		{
 			hashRuleKey.Create(
 				HKEY_LOCAL_MACHINE,
@@ -309,41 +271,34 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 			hashRuleKey.SetQwordValue("ItemSize", get<ITEM_SIZE>(ruleData));
 			hashRuleKey.SetQwordValue("LastModified", get<LAST_MODIFIED>(ruleData));
 
-			SecPolicy::updatedRules++;
-			cout << "\nThe rule for " << ruleName << " was modified";
-			return;
+			ruleModified = true;
 		}
 
 		else
 		{
-			cout << e.what() << endl;
-			return;
-		}
-	}
-	catch (const exception &e)
-	{
-		cout << e.what() << endl;
-	}
+			if (shaHashAlg != hashRuleKey.GetDwordValue("HashAlg"))
+			{
+				ruleModified = true;
+				hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);
+			}
 
-	try
-	{
-
-		if (shaHashAlg != hashRuleKey.GetDwordValue("HashAlg"))
-		{
-			ruleModified = true;
-			hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);
-		}
-
-		if (get<SHA256_HASH>(ruleData) != hashRuleKey.GetBinaryValue("ItemData"))
-		{
-			ruleModified = true;
-			hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));
+			if (get<SHA256_HASH>(ruleData) != hashRuleKey.GetBinaryValue("ItemData"))
+			{
+				ruleModified = true;
+				hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));
+			}
 		}
 
 		if (ruleModified)
 		{
 			SecPolicy::updatedRules++;
 			cout << "The rule for " << ruleName << " was modified\n";
+		}
+
+		else if (ruleDeleted)
+		{
+			SecPolicy::createdRules++;
+			cout << "\nThe rule for " << ruleName << " was deleted";
 		}
 
 		else

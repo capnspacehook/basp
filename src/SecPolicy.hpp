@@ -88,21 +88,19 @@ namespace AppSecPolicy
 		bool updateRules = false;
 		bool ruleCheck = false;
 		bool listRules = false;
-		bool justListing = true;
+		
 		bool listAllRules = false;
+		bool ruleRemoval = false;
+		bool tempRuleCreation = false;
+
 		DataFileManager dataFileMan;
 
 		SecOption secOption;
 		RuleType ruleType;
 
-		//program settings
-		unsigned dllWaitSecs = 3;
-
-		bool ruleRemoval = false;
-		bool tempRuleCreation = false;
-
 		std::vector<std::string> executableTypes;
 
+		bool justListing = true;
 		bool creatingSingleRule = false;
 		std::vector<std::thread> ruleProducers;
 		std::vector<std::thread> ruleConsumers;

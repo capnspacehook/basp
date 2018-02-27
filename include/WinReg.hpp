@@ -191,7 +191,7 @@ namespace winreg
 		);
 
 		// Wrapper around RegOpenKeyEx
-		void Open(
+		bool Open(
 			HKEY hKeyParent,
 			const std::string& subKey,
 			REGSAM desiredAccess = KEY_READ | KEY_WRITE
@@ -250,6 +250,9 @@ namespace winreg
 		// Returns a vector of pairs: In each pair, the string is the value name, 
 		// the DWORD is the value type.
 		std::vector<std::pair<std::string, DWORD>> EnumValues();
+
+		// Enumerate the number of subkeys
+		DWORD EnumNumOfValues();
 
 
 		//
@@ -546,12 +549,13 @@ namespace winreg
 	}
 
 
-	inline void RegKey::Open(
+	inline bool RegKey::Open(
 		const HKEY              hKeyParent,
 		const std::string&     subKey,
 		const REGSAM            desiredAccess
 	)
 	{
+		bool keyExists = true;
 		HKEY hKey{ nullptr };
 		LONG retCode = ::RegOpenKeyEx(
 			hKeyParent,
@@ -560,6 +564,10 @@ namespace winreg
 			desiredAccess,
 			&hKey
 		);
+		if (retCode == 2)
+		{
+			keyExists = false;
+		}
 		if (retCode != ERROR_SUCCESS)
 		{
 			throw RegException{ "RegOpenKeyEx failed.", retCode };
@@ -570,6 +578,8 @@ namespace winreg
 
 		// Take ownership of the newly created key
 		m_hKey = hKey;
+
+		return keyExists;
 	}
 
 
@@ -1155,7 +1165,7 @@ namespace winreg
 			// subkey name in the subKeyNameLen output parameter 
 			// (not including the terminating NUL).
 			// So I can build a string based on that length.
-			subkeyNames.push_back(std::string{ nameBuffer.get(), subKeyNameLen });
+			subkeyNames.emplace_back(std::string{ nameBuffer.get(), subKeyNameLen });
 		}
 
 		return subkeyNames;
@@ -1234,6 +1244,39 @@ namespace winreg
 		}
 
 		return valueInfo;
+	}
+
+
+	inline DWORD RegKey::EnumNumOfValues()
+	{
+		_ASSERTE(IsValid());
+
+		// Get useful enumeration info, like the total number of values
+		// and the maximum length of the value names
+		DWORD valueCount{};
+		LONG retCode = ::RegQueryInfoKey(
+			m_hKey,
+			nullptr,    // no user-defined class
+			nullptr,    // no user-defined class size
+			nullptr,    // reserved
+			nullptr,    // no subkey count
+			nullptr,    // no subkey max length
+			nullptr,    // no subkey class length
+			&valueCount,
+			nullptr,
+			nullptr,    // no max value length
+			nullptr,    // no security descriptor
+			nullptr     // no last write time
+		);
+		if (retCode != ERROR_SUCCESS)
+		{
+			throw RegException{
+				"RegQueryInfoKey failed while preparing for value enumeration.",
+				retCode
+			};
+		}
+
+		return valueCount;
 	}
 
 
