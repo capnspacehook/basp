@@ -18,9 +18,9 @@ namespace AppSecPolicy
 			if (!result)
 				PrintError(result.errorMessage().c_str());
 
-			else if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules || !tempAllowFile.empty() || !tempAllowDir.empty() || !tempAllowParentDir.empty() || checkRules))
+			if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules || !tempAllowFile.empty() || !tempAllowDir.empty() || checkRules))
 			{
-				std::cout << "\n\n" << R"(
+				std::cout << R"(
 	     ___          ___          ___                  
 	    /  /\        /  /\        /  /\         ___     
 	   /  /::\      /  /::\      /  /::\       /  /\    
@@ -41,10 +41,13 @@ namespace AppSecPolicy
 				std::exit(-1);
 			}
 
-			else if ((whitelisting || blacklisting || removingRules || updatingRules) && fileArgs.empty())
+			if ((whitelisting || blacklisting || removingRules || updatingRules) && fileArgs.empty())
 				PrintError("No files or dirs entered");
 
-			else if (!tempAllowFile.empty())
+			if (listAllRules && !listRules)
+				PrintError("'-a' option requires '-l'");
+
+			if (!tempAllowFile.empty())
 			{
 				if (!fs::exists(tempAllowFile))
 					PrintError("File entered for '-t' is not valid");
@@ -55,61 +58,56 @@ namespace AppSecPolicy
 				ToLower(tempAllowFile);
 			}
 
-			else if (!tempAllowDir.empty())
+			if (!tempAllowDir.empty())
 			{
 				if (tempAllowExe.empty())
-					PrintError("'-d' option requires '-e' option");
+					PrintError("'--temp-allow-dir' option requires '--temp-execute-file' option");
 
 				else if (!fs::exists(tempAllowDir))
-					PrintError("File entered for '-d' is not valid");
+					PrintError("File entered for '--temp-allow-dir' is not valid");
 
 				else if (!fs::is_directory(tempAllowDir))
-					PrintError("A directory must be entered for '-d'");
+					PrintError("A directory must be entered for '--temp-allow-dir'");
 
 				ToLower(tempAllowDir);
 			}
 
-			else if (!tempAllowExe.empty())
+			if (!tempAllowExe.empty())
 			{
 				if (tempAllowDir.empty())
-					PrintError("'-e' option requires '-d' option");
+					PrintError("'--temp-execute-file' option requires '--temp-allow-dir' option");
 
 				else if (!fs::exists(tempAllowExe))
-					PrintError("File entered for '-e' is not valid");
+					PrintError("File entered for '--temp-execute-file' is not valid");
 
 				else if (!fs::is_regular_file(tempAllowExe))
-					PrintError("An executable file must be entered for '-e' option");
+					PrintError("An executable file must be entered for '--temp-execute-file' option");
 
 				ToLower(tempAllowExe);
 			}
 
-			else if (!tempAllowParentDir.empty())
+			if (tempAllowParentDir)
 			{
-				parentDir = fs::path(tempAllowParentDir).parent_path().string();
+				if (tempAllowFile.empty())
+					PrintError("'-d' option requires '-t' option");
 
-				if (!fs::exists(tempAllowParentDir))
-					PrintError("File entered for '-a' is not valid");
+				parentDir = fs::path(tempAllowFile).parent_path().string();
 
-				else if (!fs::is_regular_file(tempAllowParentDir))
-					PrintError("An executable file must be entered for '-a' option");
-
-				else if (!fs::exists(parentDir))
-					PrintError("Parent directory of file entered for '-a' is not valid");
-
-				ToLower(tempAllowParentDir);
+				if (!fs::exists(parentDir))
+					PrintError("Parent directory of file entered for '-d' is not valid");
 			}
 
-			else if (!tempAllowParentDir.empty() && (!tempAllowFile.empty() || !tempAllowDir.empty() || !tempAllowExe.empty()))
-				PrintError("-a cannot be used with '-t', '-d', or '-e'");
+			if (!tempAllowFile.empty() && !tempAllowDir.empty())
+				PrintError("'-t' and '-d' cannot be used with '--temp-allow-dir' and '--temp-execute-file'");
 
-			else if ((whitelisting && blacklisting) || (whitelisting && removingRules) || (blacklisting && removingRules))
+			if ((whitelisting && blacklisting) || (whitelisting && removingRules) || (blacklisting && removingRules))
 				PrintError("Options '-w', '-b', and '-r' are mutually exclusive");
 
-			else if (removingRules && updatingRules)
+			if (removingRules && updatingRules)
 				PrintError("'-u' cannot be used with 'r'");
 
-			else if (executeAsAdmin && !(tempAllowFile.empty() || tempAllowDir.empty() || tempAllowExe.empty()))
-				PrintError("'--admin' is only valid when used with '-t', '-d' and '-e', or ");
+			if (executeAsAdmin && !(tempAllowFile.empty() || tempAllowDir.empty() || tempAllowExe.empty()))
+				PrintError("'--admin' is only valid when used with '-t' or '--temp-allow-dir' and '--temp-execute-file'");
 
 			for (auto &file : fileArgs)
 			{
@@ -138,7 +136,7 @@ namespace AppSecPolicy
 		std::string tempAllowDir;
 		std::string tempAllowExe;
 		std::string parentDir;
-		std::string tempAllowParentDir;
+		bool tempAllowParentDir;
 		bool checkRules = false;
 		std::string password;
 		bool executeAsAdmin = false;
@@ -194,12 +192,6 @@ namespace AppSecPolicy
 		const clara::detail::Parser parser =
 			clara::detail::ExeName(programName)
 			| clara::detail::Help(showHelp)
-			| clara::detail::Opt(listRules)
-			["-l"]["--list"]
-			("Display created rules")
-			| clara::detail::Opt(listAllRules)
-			["--list-all"]
-			("Display every created rule individually")
 			| clara::detail::Opt(whitelisting)
 			["-w"]["--whitelist"]
 			("Create rules that allow files")
@@ -210,23 +202,29 @@ namespace AppSecPolicy
 			["-u"]["--update-rules"]
 			("Scan for changes of files for created rules and update rules if files change.  If used with '-b' or '-w', rules already created will be updated")
 			| clara::detail::Opt(removingRules)
-			["-r"]["--remove"]
+			["-r"]["--remove-rules"]
 			("Remove already created rules")
 			| clara::detail::Opt(tempAllowFile, "executable")
 			["-t"]["--temp-allow-file"]
 			("Temporarily allow and execute blocked files. Files will be reblocked immediately after execution")
+			| clara::detail::Opt(tempAllowParentDir)
+			["-d"]["--temp-allow-parent-dir"]
+			("Requires '-t'. When used, the parent directory of the executable specified by '-t' is whitelisted before temporary execution. Useful if DLLs or other dependencies need to be whitelisted for program to run")
 			| clara::detail::Opt(tempAllowDir, "directory")
-			["-d"]["--temp-allow-dir"]
+			["--temp-allow-dir"]
 			("Temporarily allow a directory")
 			| clara::detail::Opt(tempAllowExe, "executable")
-			["-e"]["--temp-execute-file"]
-			("Specify a dir to temporarily allow with '-d', and use '-e' to specify what file to execute")
-			| clara::detail::Opt(tempAllowParentDir, "executable")
-			["-a"]["--auto-allow-execute"]
-			("Temporarily allow dir of file entered, then execute file")
+			["--temp-execute-file"]
+			("Specify a dir to temporarily allow with '--temp-allow-dir', and use '--temp-execute-file' to specify what file to execute")
 			| clara::detail::Opt(checkRules)
 			["-k"]["--check-rules"]
 			("Check for any modifications to created files in the registry. Rules will automactically be fixed if modified")
+			| clara::detail::Opt(listRules)
+			["-l"]["--list"]
+			("Displays created rules")
+			| clara::detail::Opt(listAllRules)
+			["-a"]["--list-all"]
+			("Requires '-l'. Displays every created rule individually")
 			| clara::detail::Opt(password, "password")
 			["--password"]
 			("Attempts to unlock BASP with password")

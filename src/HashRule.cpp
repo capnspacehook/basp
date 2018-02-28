@@ -29,11 +29,12 @@ const string HashRule::fileProps[5] = {
 	"ProductName",
 	"CompanyName" };
 
-//sets the 'subKey' parameter to the rule's guid
+//creates new hash rule
 void HashRule::CreateNewHashRule(RuleDataPtr &ruleData)
 {
 	string fileName = get<FILE_LOCATION>(*ruleData);
 
+	//build of nessesary data to create hash rule
 	itemSize = get<ITEM_SIZE>(*ruleData);
 	EnumFriendlyName(fileName);
 	EnumCreationTime();
@@ -41,6 +42,7 @@ void HashRule::CreateNewHashRule(RuleDataPtr &ruleData)
 	CreateGUID();
 	WriteToRegistry(fileName, get<SEC_OPTION>(*ruleData));
 	
+	//assign rule information so the rule can be stored in settings file
 	get<RULE_GUID>(*ruleData) = move(guid);
 	get<FRIENDLY_NAME>(*ruleData) = move(friendlyName);
 	get<ITEM_SIZE>(*ruleData) = itemSize;
@@ -314,6 +316,7 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 	}
 }
 
+//gets the version of the file we are creating a rule for
 void HashRule::EnumFileVersion(const string &fileName)
 {
 	//Code adapted from crashmstr at
@@ -353,7 +356,7 @@ void HashRule::EnumFileVersion(const string &fileName)
 	}
 }
 
-//Generates FriendlyName, which is a collection of metadata from the file
+//generates FriendlyName, which is a collection of metadata from the file
 void HashRule::EnumFriendlyName(const string &fileName)
 {
 	//Adapted from Henri Hein at

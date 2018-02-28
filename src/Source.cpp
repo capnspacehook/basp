@@ -48,13 +48,16 @@ int main(int argc, char *argv[])
 		secPolicy.RemoveRules(parser.fileArgs);
 
 	else if (!parser.tempAllowFile.empty())
-		secPolicy.TempRun(parser.tempAllowFile);
+	{
+		if (parser.tempAllowParentDir)
+			secPolicy.TempRun(parser.parentDir, parser.tempAllowFile);
+
+		else
+			secPolicy.TempRun(parser.tempAllowFile);
+	}
 
 	else if (!parser.tempAllowDir.empty())
 		secPolicy.TempRun(parser.tempAllowDir, parser.tempAllowExe);
-
-	else if (!parser.tempAllowParentDir.empty())
-		secPolicy.TempRun(parser.parentDir, parser.tempAllowParentDir);
 }
 
 void CheckElevated()

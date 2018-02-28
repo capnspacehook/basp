@@ -124,7 +124,7 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 					exit(-1);
 				}
 
-				ModifyRules();
+				ProcessRules();
 				if (directories.empty())
 				{
 					RuleConsumer ruleConsumer(updateRules);
@@ -159,7 +159,7 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 					RuleProducer());
 			}
 
-			ModifyRules();
+			ProcessRules();
 			for (auto &t : ruleProducers)
 				t.join();
 
@@ -219,7 +219,7 @@ void SecPolicy::TempRun(const string &path)
 			if (result == RuleFindResult::DIFF_SEC_OP)
 			{
 				skippedRules++;
-				cout << file.string() << " is already allowed.";
+				cout << '\n' << file.string() << " is already allowed";
 			}
 
 			else
@@ -249,10 +249,10 @@ void SecPolicy::TempRun(const string &path)
 
 			if (!procCreated)
 			{
-				cerr << "CreateProcess error: " << GetLastError() << '\n';
+				cerr << "\nCreateProcess error: " << GetLastError() << '\n';
 			}
 
-			Sleep(1000);
+			Sleep(500);
 			CloseHandle(pi.hProcess);
 			CloseHandle(pi.hThread);
 
@@ -261,7 +261,7 @@ void SecPolicy::TempRun(const string &path)
 				removedRules++;
 				tempRule.RemoveRule(get<RULE_GUID>(*tempRuleData),
 					SecOption::WHITELIST);
-				cout << "Temporary rule deleted\n";
+				cout << "\nTemporary rule deleted";
 			}
 
 			else if (result == RuleFindResult::EXACT_MATCH)
@@ -269,23 +269,23 @@ void SecPolicy::TempRun(const string &path)
 				switchedRules++;
 				get<SEC_OPTION>(*tempRuleData) = SecOption::WHITELIST;
 				tempRule.SwitchRule(size, tempRuleData);
-				cout << "Rule switched back to deny mode.\n";
+				cout << "\nRule switched back to deny mode";
 			}
 		}
 		else
 		{
-			cout << "Can't create hash rule for " <<
-				file.string() << '\n';
+			cout << "\nCan't create hash rule for " <<
+				file.string();
 			exit(-1);
 		}
 	}
 	catch (const fs::filesystem_error &e)
 	{
-		cout << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 }
 
@@ -306,7 +306,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 
 		ApplyChanges(false);
 
-		cout << ". Executing " << exeFile.string() << " now...\n\n";
+		cout << "\nExecuting " << exeFile.string() << " now...\n";
 
 		// start the program up
 		STARTUPINFO si;
@@ -317,29 +317,26 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 
 		si.cb = sizeof(si);
 		bool procCreated = CreateProcess(
-			exeFile.string().c_str(),
+			(char*)exeFile.string().c_str(),
 			nullptr,
 			nullptr,
 			nullptr,
 			FALSE,
 			NULL,
 			nullptr,
-			exeFile.parent_path().string().c_str(),
+			(char*)exeFile.parent_path().string().c_str(),
 			&si,
 			&pi);
 
 		if (!procCreated)
-		{
-			cerr << "CreateProcess error: " << GetLastError() << '\n';
-			return;
-		}
+			cerr << "\nCreateProcess error: " << GetLastError() << '\n';
 
-		Sleep(1000);
+		Sleep(500);
 		// Close process and thread handles. 
 		CloseHandle(pi.hProcess);
 		CloseHandle(pi.hThread);
 
-		cout << "Reverting temporary changes...";
+		cout << "\nReverting temporary changes...";
 
 		//delete temporary rules in parallel
 		for (const auto &tempRuleID : createdRulesData)
@@ -351,10 +348,22 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 				ModificationType::SWITCHED, 0ULL, tempRule));
 
 		ruleConsumers.clear();
-		for (unsigned i = 0; i < maxThreads; i++)
-			ruleConsumers.emplace_back(
-				&RuleConsumer::ConsumeRules,
-				RuleConsumer(updateRules));
+
+		if (createdRules)
+		{
+			for (unsigned i = 0; i < initThreadCnt; i++)
+				ruleConsumers.emplace_back(
+					&RuleConsumer::RemoveRules,
+					RuleConsumer(updateRules));
+		}
+
+		if (switchedRules)
+		{
+			for (unsigned i = 0; i < initThreadCnt; i++)
+				ruleConsumers.emplace_back(
+					&RuleConsumer::ConsumeRules,
+					RuleConsumer(updateRules));
+		}
 
 		for (auto &t : ruleConsumers)
 			t.join();
@@ -367,14 +376,15 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 	}
 	catch (const fs::filesystem_error &e)
 	{
-		cerr << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 	catch (const exception &e)
 	{
-		cerr << e.what() << '\n';
+		cerr << '\n' << e.what();
 	}
 }
 
+//Updates created rules if files they are based off of have changed
 void SecPolicy::UpdateRules(const vector<string> &paths)
 {
 	justListing = false;
@@ -421,7 +431,7 @@ void SecPolicy::UpdateRules(const vector<string> &paths)
 	cout << '\n';
 }
 
-//delete rules from registry
+//delete the rules the user specifies from registry
 void SecPolicy::RemoveRules(vector<string> &paths)
 {
 	ruleRemoval = true;
@@ -480,6 +490,7 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 	cout << '\n';
 }
 
+//Verifies and if nessesary fixes rules in registry
 void SecPolicy::CheckRules()
 {
 	using namespace winreg;
@@ -529,12 +540,13 @@ void SecPolicy::CheckRules()
 		t.join();
 
 	if (updatedRules == 0 && createdRules == 0)
-		cout << "\nFinished checking rules. All rules are correct";
+		cout << "\nFinished checking rules. All rules are correct\n";
 
 	else
-		cout << "\nFinished checking rules. Changed rules are now corrected";
+		cout << "\nFinished checking rules. Changed rules are now corrected\n";
 }
 
+//displays created rules
 void SecPolicy::ListRules() const
 {
 	dataFileMan.ListRules(listAllRules);
@@ -598,10 +610,8 @@ void SecPolicy::CheckGlobalSettings()
 	}
 }
 
-//checks whether file is a valid type as detirmined by the list 
-//in the member variable executableTypes and if it is, start creating
-//a new hash rule for the file in a new thread
-void SecPolicy::ModifyRules()
+//verifies files sent from RuleProducers are valid and if so starts proccessing them
+void SecPolicy::ProcessRules()
 {
 	try
 	{
@@ -753,6 +763,8 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 			if (updatedRules || switchedRules)
 				dataFileMan.UpdateEntries(secOption, updatedRulesData);
 
+			//if a directory that has already had rules created for it is proccessed again,
+			//check if any files have been removed
 			if ((updatedRules || skippedRules) && !ruleCheck)
 			{
 				auto totalRulesProcessed = 
@@ -785,7 +797,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 				}
 			}
 
-			if (removedRules && removedRules != switchedRules)
+			if (removedRules)
 				dataFileMan.RemoveOldEntries();
 
 			dataFileMan.WriteChanges();
