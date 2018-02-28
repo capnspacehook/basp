@@ -81,7 +81,7 @@ namespace AppSecPolicy
 		{
 			startTime = std::chrono::high_resolution_clock::now();
 		}
-		void ModifyRules();
+		void ProcessRules();
 		void PrintStats(TimeDiff) const;
 		void ApplyChanges(bool);
 

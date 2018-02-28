@@ -21,11 +21,14 @@ using namespace AppSecPolicy;
 using namespace Protected_Ptr;
 namespace fs = std::experimental::filesystem;
 
+//attempt to open settings file and verify that key used to open encrypted file
+//is correct, and that settings file has not been modified
 bool DataFileManager::OpenPolicyFile()
 {
 	string temp;
 	bool goodOpen = true;
 
+	//attempt to decrypt file
 	GCM<AES>::Decryption decryptor;
 	decryptor.SetKeyWithIV(kdfHash->data(), KEY_SIZE, kdfHash->data() + KEY_SIZE, KEY_SIZE);
 	kdfHash.ProtectMemory(true);
@@ -38,6 +41,8 @@ bool DataFileManager::OpenPolicyFile()
 	encPolicyFile.Attach(new Redirector(adf));
 	encPolicyFile.PumpAll();
 
+	//check if file header exists at beginning of file, if it doesn't the 
+	//key used to decrypt the file is incorrect
 	if (temp.substr(0, policyFileHeader.length()) != policyFileHeader)
 		goodOpen = false;
 
@@ -45,7 +50,10 @@ bool DataFileManager::OpenPolicyFile()
 		if (!adf.GetLastResult())
 		{
 			goodOpen = false;
-			cerr << "File modified!" << '\n';
+			cerr << "\nBASP's data has been tampered with, the integrity of both "
+				<< "BASP's stored data and the rules in the registry cannot be verified. "
+				<< "Extreme caution is advised.";
+			exit(-1);
 		}
 
 	if (goodOpen)
@@ -71,6 +79,7 @@ bool DataFileManager::OpenPolicyFile()
 
 		if (getline(iss, temp))
 		{
+			//read in userRules
 			bool rulesLeft = true;
 			while (rulesLeft && (temp.back() == '*' || temp.back() == '#'))
 			{
@@ -85,6 +94,7 @@ bool DataFileManager::OpenPolicyFile()
 				rulesLeft = static_cast<bool>(getline(iss, temp));
 			}
 
+			//read in regular rules
 			if (rulesLeft)
 			{
 				ruleInfo.emplace_back(temp + '\n');
@@ -108,6 +118,7 @@ bool DataFileManager::OpenPolicyFile()
 	return goodOpen;
 }
 
+//closes and encryptes settings file
 void DataFileManager::ClosePolicyFile()
 {
 	GCM<AES>::Encryption encryptor;
@@ -147,6 +158,8 @@ void DataFileManager::ClosePolicyFile()
 	policyData.ProtectMemory(true);
 }
 
+//returns global policy data as in registry. If no global settings exist,
+//default settings are set
 string DataFileManager::GetCurrentPolicySettings() const
 {
 	using namespace winreg;
@@ -161,6 +174,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 		
 		auto values = policyKey.EnumValues();
 
+		//global settings not yet set, set as defaults
 		if (values.size() < 5)
 		{
 			policyKey.SetDwordValue("AuthenticodeEnabled", 0);
@@ -170,6 +184,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 			policyKey.SetDwordValue("TransparentEnabled", 1);
 		}
 
+		//read in global settings
 		policySettings += to_string(policyKey.GetDwordValue("AuthenticodeEnabled"));
 		policySettings += "|";
 		
@@ -204,6 +219,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 	}
 }
 
+//searches list of created rules, returns status of search
 RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	const string &path, RuleData &foundRuleData) const
 {
@@ -241,6 +257,9 @@ RuleFindResult DataFileManager::FindRule(SecOption option, RuleType type,
 	return result;
 }
 
+//searches list of userRules, returns status of search. If rule is found, whether
+//the found rule is a subdirectory of parent directory of another existing rule is 
+//also specified to the caller
 RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	const string &path, size_t &index, bool &parentDirDiffOp) const
 {
@@ -412,7 +431,6 @@ VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &pare
 			validRule = true;
 		}
 	}
-	
 
 	return foundRule;
 }
