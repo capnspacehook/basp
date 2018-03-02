@@ -30,18 +30,18 @@ As stated above, this project is still a work in progress, so any thoughts, comm
 
 ## Credits
 
-Crypto++
-Compilation Copyright (c) 1995-2016 by Wei Dai
+Crypto++  
+Compilation Copyright (c) 1995-2016 by Wei Dai  
 https://github.com/weidai11/cryptopp
 
-ConcurrentQueue
-Copyright (c) 2013-2016 by Cameron Desrochers
+ConcurrentQueue  
+Copyright (c) 2013-2016 by Cameron Desrochers  
 https://github.com/cameron314/concurrentqueue
 
-WinReg
-Copyright (c) 2017 by Giovanni Dicanio
+WinReg  
+Copyright (c) 2017 by Giovanni Dicanio  
 https://github.com/GiovanniDicanio/WinReg
 
-Clara
-Copyright (c) 2014-2018 by Phil Nash
+Clara  
+Copyright (c) 2014-2018 by Phil Nash  
 https://github.com/catchorg/Clara
