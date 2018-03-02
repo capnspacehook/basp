@@ -27,3 +27,21 @@ Goals of project:
 * Monitor SRP registry keys
 
 As stated above, this project is still a work in progress, so any thoughts, comments or constructive criticism is greatly appreciated. Please let me know if you have any ideas for the project, or some suggestions for improvement. If you want to try BASP out, just download and run the executable from the 'Beta Binaries' folder in Powershell or Command Prompt.
+
+## Credits
+
+Crypto++
+Compilation Copyright (c) 1995-2016 by Wei Dai
+https://github.com/weidai11/cryptopp
+
+ConcurrentQueue
+Copyright (c) 2013-2016 by Cameron Desrochers
+https://github.com/cameron314/concurrentqueue
+
+WinReg
+Copyright (c) 2017 by Giovanni Dicanio
+https://github.com/GiovanniDicanio/WinReg
+
+Clara
+Copyright (c) 2014-2018 by Phil Nash
+https://github.com/catchorg/Clara
