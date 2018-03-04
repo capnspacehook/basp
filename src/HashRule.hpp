@@ -1,4 +1,6 @@
 #include "AppSecPolicy.hpp"
+
+#include <string_view>
 #pragma once
 
 namespace AppSecPolicy
@@ -24,12 +26,12 @@ namespace AppSecPolicy
 
 	private:
 		void UpdateRule(const uintmax_t&, RuleData&, bool);
-		void EnumFileVersion(const std::string &fileName);
-		void EnumFriendlyName(const std::string &fileName);
+		void EnumFileVersion(const std::string_view &fileName);
+		void EnumFriendlyName(const std::string_view &fileName);
 		inline void EnumCreationTime() noexcept;
-		void HashDigests(const std::string &fileName);
+		void HashDigests(const std::string_view &fileName);
 		inline void CreateGUID();
-		void WriteToRegistry(const std::string &fileName,
+		void WriteToRegistry(const std::string_view &fileName,
 			SecOption policy);
 		inline bool MakeGUID();
 		inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;

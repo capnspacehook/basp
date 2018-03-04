@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
 
 	CliParser parser(argc, argv);
 
-	SecPolicy secPolicy(parser.programName, parser.password, parser.updatingRules, 
+	SecPolicy secPolicy(move(parser.programName), move(parser.password), parser.updatingRules, 
 		parser.listRules, parser.listAllRules);
 
 	if (parser.checkRules)

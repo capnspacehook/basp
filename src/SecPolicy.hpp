@@ -18,17 +18,17 @@ namespace AppSecPolicy
 	class SecPolicy
 	{
 	public:
-		explicit SecPolicy(std::string &prgmName, std::string& pwd, bool update, bool lstRules, bool lstAll)
-			: updateRules(update), listRules(lstRules), listAllRules(lstAll), dataFileMan(prgmName)
+		explicit SecPolicy(std::string &&prgmName, std::string &&pwd, bool update, bool lstRules, bool lstAll)
+			: updateRules(update), listRules(lstRules), listAllRules(lstAll), programName(std::move(prgmName)), dataFileMan(programName)
 		{
-			dataFileMan.VerifyPassword(pwd);
+			dataFileMan.VerifyPassword(std::forward<std::string>(pwd));
 			
 			CheckGlobalSettings();
 			StartTimer();
 		}
 		~SecPolicy()
 		{
-			if (!justListing)
+			if (!justListing || whitelistedBASP)
 			{
 				ApplyChanges(true);
 				const auto diff = std::chrono::high_resolution_clock::now() - startTime;
@@ -85,6 +85,7 @@ namespace AppSecPolicy
 		void PrintStats(TimeDiff) const;
 		void ApplyChanges(bool);
 
+		std::string programName;
 		bool updateRules = false;
 		bool ruleCheck = false;
 		bool listRules = false;
@@ -101,6 +102,7 @@ namespace AppSecPolicy
 		std::vector<std::string> executableTypes;
 
 		bool justListing = true;
+		bool whitelistedBASP = false;
 		bool creatingSingleRule = false;
 		std::vector<std::thread> ruleProducers;
 		std::vector<std::thread> ruleConsumers;

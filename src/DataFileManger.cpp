@@ -367,7 +367,7 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	return result;
 }
 
-VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &parentDir, 
+VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &parentDir,
 	bool &nonExistingSubdir, bool &existingSubdir, SecOption &parentOp,  bool &validRule) const
 {
 	bool exactRule = false;
@@ -497,15 +497,9 @@ optional<pair<VecStrConstIt, VecStrConstIt>> DataFileManager::FindUserRulesInDir
 	if (subDirsExist)
 	{
 		auto foundRulesEnd = upper_bound(foundRulesBegin, userRulePaths.end(), path,
-			[&path](string const& str1, string const& str2) noexcept
+			[](const string &str1, const string &str2) noexcept
 			{
-				// compare UP TO the length of the prefix and no farther
-				if (auto cmp = strncmp(str1.data(), str2.data(), path.size()))
-					return cmp < 0;
-
-				// The strings are equal to the length of the prefix so
-				// behave as if they are equal. That means s1 < s2 == false
-				return false;
+				return str1 < str2.substr(0, str1.length());
 			});
 
 		if (foundRulesBegin == foundRulesEnd && foundRulesEnd != userRulePaths.end())
@@ -950,14 +944,14 @@ void DataFileManager::WriteChanges()
 	policyDataModified = true;
 }
 
-void DataFileManager::VerifyPassword(string& guessPwd)
+void DataFileManager::VerifyPassword(string &&guessPwd)
 {
-	if (fs::exists(policyFileName))
-		CheckPassword(guessPwd);
+	if (fs::exists(policyFileName.c_str()))
+		CheckPassword(move(guessPwd));
 	else
 	{
 		firstTimeRun = true;
-		SetNewPassword(guessPwd);
+		SetNewPassword(move(guessPwd));
 	}
 }
 
@@ -1109,8 +1103,7 @@ void DataFileManager::ListRules(bool listAll) const
 			sort(tempVec.begin(), tempVec.end(),
 				[&removed](const string &str1, const string &str2)
 				{
-					if ((str1[SEC_OPTION] != removed && str2[SEC_OPTION] != removed)
-						&& (str1[SEC_OPTION] != str2[SEC_OPTION]))
+					if (str1[SEC_OPTION] != str2[SEC_OPTION])
 						return str1[SEC_OPTION] > str2[SEC_OPTION];
 
 					fs::path path1(str1.substr(

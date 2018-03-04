@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <iostream>
 #include <sstream>
-#include <memory>
 
 using namespace std;
 using namespace moodycamel;
@@ -599,8 +598,35 @@ void SecPolicy::CheckGlobalSettings()
 			policySettings.SetDwordValue("TransparentEnabled",
 				static_cast<DWORD>(globalSettings[TRANSPARENT_ENABLED] - '0'));
 		}
+
+		RuleData ruleData;
+		auto exePath = fs::current_path().string() + '\\' + programName;
+		auto result = dataFileMan.FindRule(SecOption::WHITELIST, RuleType::HASHRULE, exePath, ruleData);
+		if (result != RuleFindResult::EXACT_MATCH)
+		{
+			cout << "\nBASP isn't explicitly allowed, whitelisting now...";
+			auto tempPath = fs::temp_directory_path().string() + '\\'  + programName;
+			
+			fs::copy_file(exePath, tempPath);
+			get<SEC_OPTION>(ruleData) = SecOption::WHITELIST;
+			get<FILE_LOCATION>(ruleData) = tempPath;
+			createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
+
+			HashRule hashRule(false);
+			hashRule.CreateNewHashRule(createdRulesData.back());
+
+			get<FILE_LOCATION>(*createdRulesData.back()) = exePath;
+			fs::remove(tempPath);
+
+			cout << "done\n";
+			whitelistedBASP = true;
+		}
 	}
 	catch (const RegException &e)
+	{
+		cerr << '\n' << e.what();
+	}
+	catch (const fs::filesystem_error &e)
 	{
 		cerr << '\n' << e.what();
 	}

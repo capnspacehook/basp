@@ -32,7 +32,7 @@ const string HashRule::fileProps[5] = {
 //creates new hash rule
 void HashRule::CreateNewHashRule(RuleDataPtr &ruleData)
 {
-	string fileName = get<FILE_LOCATION>(*ruleData);
+	const string_view fileName = get<FILE_LOCATION>(*ruleData);
 
 	//build of nessesary data to create hash rule
 	itemSize = get<ITEM_SIZE>(*ruleData);
@@ -317,12 +317,12 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 }
 
 //gets the version of the file we are creating a rule for
-void HashRule::EnumFileVersion(const string &fileName)
+void HashRule::EnumFileVersion(const string_view &fileName)
 {
 	//Code adapted from crashmstr at
 	//https://stackoverflow.com/questions/940707/how-do-i-programmatically-get-the-version-of-a-dll-or-exe-file
 
-	LPCTSTR szVersionFile = fileName.c_str();
+	LPCTSTR szVersionFile = fileName.data();
 	DWORD verHandle = 0;
 	UINT size = 0;
 	LPBYTE lpBuffer = nullptr;
@@ -357,12 +357,12 @@ void HashRule::EnumFileVersion(const string &fileName)
 }
 
 //generates FriendlyName, which is a collection of metadata from the file
-void HashRule::EnumFriendlyName(const string &fileName)
+void HashRule::EnumFriendlyName(const string_view &fileName)
 {
 	//Adapted from Henri Hein at
 	//http://www.codeguru.com/cpp/w-p/win32/versioning/article.php/c4539/Versioning-in-Windows.htm
 	
-	LPCTSTR szFile = fileName.c_str();
+	LPCTSTR szFile = fileName.data();
 	DWORD dwLen, dwUseless;
 	LPTSTR lpVI = nullptr;
 	WORD* langInfo = nullptr;
@@ -385,13 +385,10 @@ void HashRule::EnumFriendlyName(const string &fileName)
 	if (dwLen == 0 || !validLang)
 	{
 		//get size on disk
-		string originalName = fileName.substr(
-			fileName.rfind('\\') + 1,
-			fileName.length());
 		const auto sizeOnDisk = (4096 * ((itemSize + 4096 - 1) / 4096)) / 1024;
 		
 		WIN32_FIND_DATA data;
-		HANDLE fileHandle = FindFirstFile(fileName.c_str(), &data);
+		HANDLE fileHandle = FindFirstFile(fileName.data(), &data);
 		FindClose(fileHandle);
 		
 		//get last write time in the local time zone
@@ -403,7 +400,8 @@ void HashRule::EnumFriendlyName(const string &fileName)
 			+ " " + to_string(sysTimeLocal.wHour) + ":"
 			+ to_string(sysTimeLocal.wMinute) + ":" + to_string(sysTimeLocal.wSecond);
 
-		friendlyName = originalName + to_string(sizeOnDisk) + "  KB" + timeStamp;
+		friendlyName = fileName.substr(fileName.rfind('\\') + 1, fileName.length()).data() + 
+			to_string(sizeOnDisk) + "  KB" + timeStamp;
 	}
 	else
 	{
@@ -449,7 +447,7 @@ inline void HashRule::EnumCreationTime() noexcept
 		currTime.dwHighDateTime << 32;
 }
 
-void HashRule::HashDigests(const string &fileName)
+void HashRule::HashDigests(const string_view &fileName)
 {
 	using namespace CryptoPP;
 
@@ -459,11 +457,11 @@ void HashRule::HashDigests(const string &fileName)
 	string shaDigest;
 	
 	FileSource(
-		fileName.c_str(), true, new HashFilter(
+		fileName.data(), true, new HashFilter(
 			md5Hash, new HexEncoder(new StringSink(md5Digest))));
 
 	FileSource(
-		fileName.c_str(), true, new HashFilter(
+		fileName.data(), true, new HashFilter(
 			shaHash, new HexEncoder(new StringSink(shaDigest))));
 
 	//convert string to format that can be loaded into registry
@@ -529,7 +527,7 @@ inline bool HashRule::MakeGUID()
 }
 
 //write the hash rule to the registry
-void HashRule::WriteToRegistry(const string &fileName, SecOption policy)
+void HashRule::WriteToRegistry(const string_view &fileName, SecOption policy)
 {
 	using namespace winreg;
 

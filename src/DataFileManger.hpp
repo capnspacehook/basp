@@ -3,6 +3,7 @@
 #include "include\Crypto++\aes.h"
 
 #include <optional>
+#include <string_view>
 #pragma once
 
 using CryptoPP::AES;
@@ -19,6 +20,7 @@ namespace AppSecPolicy
 
 	using VecStrIt = std::vector<std::string>::iterator;
 	using VecStrConstIt = std::vector<std::string>::const_iterator;
+	using VecStrViewConstIt = std::vector<std::string_view>::const_iterator;
 
 	class DataFileManager
 	{
@@ -69,7 +71,7 @@ namespace AppSecPolicy
 		static RuleData StringToRuleData(const std::string&);
 		static std::string RuleDataToString(const RuleData&);
 
-		void VerifyPassword(std::string&);
+		void VerifyPassword(std::string&&);
 		void CheckPassword(std::string&);
 		void SetNewPassword(std::string&);
 		RuleFindResult FindRule(SecOption, RuleType,
@@ -104,20 +106,20 @@ namespace AppSecPolicy
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfHash;
 
 		HANDLE policyFileHandle;
-		const std::string policyFileName = "Policy Settings.dat";
-		const std::string policyFileHeader = "Policy Settings\n";
+		const std::string policyFileName;
+		const std::string_view policyFileHeader = "Policy Settings\n";
 		ProtectedPtr<std::string, StringSerializer> policyData;
 		
 		std::string globalPolicySettings;
 
-		std::vector<std::string> userRuleInfo;	//dirs the user entered to do work on
-		std::vector<std::string> userRulePaths;	//extracted paths from userRuleInfo
+		std::vector<std::string> userRuleInfo;		//dirs the user entered to do work on
+		std::vector<std::string> userRulePaths;		//extracted paths from userRuleInfo
 
-		std::vector<std::string> updatedRules;	//rules that have been updated or switched
-		std::vector<std::string> removedRules;	//rules that have been/to be removed
+		std::vector<std::string> updatedRules;		//rules that have been updated or switched
+		std::vector<std::string> removedRules;		//rules that have been/to be removed
 
-		std::vector<std::string> ruleInfo;		//data of already created rules
-		std::vector<std::string> rulePaths;		//paths of created rules for searching
+		std::vector<std::string> ruleInfo;			//data of already created rules
+		std::vector<std::string> rulePaths;			//paths of created rules for searching
 		
 		bool rulesAdded = false;
 		bool firstTimeRun = false;
