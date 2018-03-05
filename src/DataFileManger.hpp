@@ -2,8 +2,8 @@
 #include "ProtectedPtr.hpp"
 #include "include\Crypto++\aes.h"
 
-#include <optional>
 #include <string_view>
+#include <optional>
 #pragma once
 
 using CryptoPP::AES;
@@ -93,9 +93,9 @@ namespace AppSecPolicy
 		
 		RuleFindResult FindUserRule(SecOption, RuleType, 
 			const std::string&, std::size_t&, bool&) const;
-		VecStrConstIt FindUserRuleHelper(const std::string&, bool&, bool&, bool&,
+		VecStrViewConstIt FindUserRuleHelper(const std::string&, bool&, bool&, bool&,
 			SecOption&, bool&) const;
-		bool IsSubDir(const std::string &needle, const std::string &haystack) const;
+		bool IsSubDir(const std::string_view &needle, const std::string_view &haystack) const;
 		std::optional<std::pair<VecStrConstIt, VecStrConstIt>> FindUserRulesInDir(const std::string&) const;
 		void SortRules();
 		
@@ -112,14 +112,14 @@ namespace AppSecPolicy
 		
 		std::string globalPolicySettings;
 
-		std::vector<std::string> userRuleInfo;		//dirs the user entered to do work on
-		std::vector<std::string> userRulePaths;		//extracted paths from userRuleInfo
+		std::vector<std::string> userRuleInfo;			//dirs the user entered to do work on
+		std::vector<std::string_view> userRulePaths;	//extracted paths from userRuleInfo
 
-		std::vector<std::string> updatedRules;		//rules that have been updated or switched
-		std::vector<std::string> removedRules;		//rules that have been/to be removed
+		std::vector<std::string> updatedRules;			//rules that have been updated or switched
+		std::vector<std::string> removedRules;			//rules that have been/to be removed
 
-		std::vector<std::string> ruleInfo;			//data of already created rules
-		std::vector<std::string> rulePaths;			//paths of created rules for searching
+		std::vector<std::string> ruleInfo;				//data of already created rules
+		std::vector<std::string_view> rulePaths;		//paths of created rules for searching
 		
 		bool rulesAdded = false;
 		bool firstTimeRun = false;
@@ -131,8 +131,9 @@ namespace AppSecPolicy
 		std::vector<std::string> executableTypes = {
 			"ADE", "ADP", "APPLICATION", "BAS", "BAT", "BGI", "CHM", "CMD", "COM",
 			"CPL", "CRT", "DIAGCAB", "DLL", "EXE", "HLP", "HTA", "INF", "INS",
-			"ISP", "JS", "JSE", "LNK", "MDB", "MDE", "MSC", "MSI", "MSP", "MST",
-			"OCX", "PCD", "PIF", "PS1", "PS2", "PSM", "REG", "SCR", "SCT", "SHS",
-			"URL", "VB", "VBE", "VBS", "VBSCRIPT", "WSC", "XAML", "XBAP", "XPI" };
+			"ISP", "JAR", "JS", "JSE", "LNK", "MDB", "MDE", "MSC", "MSI", "MSP", "MST",
+			"OCX", "PCD", "PIF", "PS1", "PS1XML", "PS2", "PS2XML", "PSC1", "PSC2",
+			"PSM", "REG", "SCR", "SCT", "SHS", "URL", "VB", "VBE", "VBS", "VBSCRIPT", 
+			"WS", "WSF", "WSC", "WSH", "XAML", "XBAP", "XPI" };
 	};
 }

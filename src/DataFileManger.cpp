@@ -88,8 +88,9 @@ bool DataFileManager::OpenPolicyFile()
 
 				temp.pop_back();
 				userRuleInfo.emplace_back(temp);
-				userRulePaths.emplace_back(temp.substr(
-					RULE_PATH_POS, temp.length()));
+				userRulePaths.emplace_back(userRuleInfo.back());
+				userRulePaths.back() = userRulePaths.back().substr(
+					RULE_PATH_POS, userRulePaths.back().size());
 
 				rulesLeft = static_cast<bool>(getline(iss, temp));
 			}
@@ -98,14 +99,16 @@ bool DataFileManager::OpenPolicyFile()
 			if (rulesLeft)
 			{
 				ruleInfo.emplace_back(temp + '\n');
-				rulePaths.emplace_back(temp.substr(
-					RULE_PATH_POS, temp.find("|{") - 4));
+				rulePaths.emplace_back(ruleInfo.back());
+				rulePaths.back() = rulePaths.back().substr(
+					RULE_PATH_POS, rulePaths.back().find("|{") - 4);
 
 				while (getline(iss, temp))
 				{
 					ruleInfo.emplace_back(temp + '\n');
-					rulePaths.emplace_back(temp.substr(
-						RULE_PATH_POS, temp.find("|{") - 4));
+					rulePaths.emplace_back(ruleInfo.back());
+					rulePaths.back() = rulePaths.back().substr(
+						RULE_PATH_POS, rulePaths.back().find("|{") - 4);
 				}
 			}
 		}
@@ -367,11 +370,11 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	return result;
 }
 
-VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &parentDir,
+VecStrViewConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &parentDir,
 	bool &nonExistingSubdir, bool &existingSubdir, SecOption &parentOp,  bool &validRule) const
 {
 	bool exactRule = false;
-	VecStrConstIt foundRule;
+	VecStrViewConstIt foundRule;
 
 	const auto exactSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
 
@@ -383,7 +386,7 @@ VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &pare
 	}
 
 	const auto subDirSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
-		[](const string &str1, const string &str2) noexcept
+		[](const string_view &str1, const string_view &str2) noexcept
 		{
 			return str1 < str2.substr(0, str1.length());
 		});
@@ -412,7 +415,7 @@ VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &pare
 	else 
 	{
 		const auto parentSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path,
-			[](const string &str1, const string &str2) noexcept
+			[](const string_view &str1, const string_view &str2) noexcept
 			{
 				if (str1 == str2)
 					return true;
@@ -436,9 +439,9 @@ VecStrConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &pare
 }
 
 //returns true if 'needle' is a subdir of 'haystack'
-bool DataFileManager::IsSubDir(const string &needle, const string &haystack) const
+bool DataFileManager::IsSubDir(const string_view &needle, const string_view &haystack) const
 {
-	fs::path needlePath(needle);
+	fs::path needlePath(needle.data());
 	const auto needleParentNum = distance(needlePath.begin(), needlePath.end()) - 2;
 
 	for (int i = 0; i < needleParentNum; i++)
@@ -458,7 +461,7 @@ vector<RuleData> DataFileManager::FindRulesInDir(const string &path) const
 	auto foundRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), path);
 
 	auto foundRulesEnd = upper_bound(foundRulesBegin, rulePaths.end(), path,
-		[](const string &str1, const string &str2) noexcept
+		[](const string_view &str1, const string_view &str2) noexcept
 		{
 			return str1 < str2.substr(0, str1.length());
 		});
@@ -497,7 +500,7 @@ optional<pair<VecStrConstIt, VecStrConstIt>> DataFileManager::FindUserRulesInDir
 	if (subDirsExist)
 	{
 		auto foundRulesEnd = upper_bound(foundRulesBegin, userRulePaths.end(), path,
-			[](const string &str1, const string &str2) noexcept
+			[](const string_view &str1, const string_view &str2) noexcept
 			{
 				return str1 < str2.substr(0, str1.length());
 			});
@@ -590,46 +593,55 @@ string DataFileManager::RuleDataToString(const RuleData& ruleData)
 
 void DataFileManager::SortRules()
 {
-	if (userRulesNotSorted)
+	try
 	{
-		sort(userRuleInfo.begin(), userRuleInfo.end(),
-			[](const string &str1, const string &str2)
-			{
-				return str1.substr(RULE_PATH_POS,
-					str1.length())
-					< str2.substr(RULE_PATH_POS,
-						str2.length());
-			});
-
-		userRulePaths.clear();
-		for (const auto& rule : userRuleInfo)
+		if (userRulesNotSorted)
 		{
-			userRulePaths.emplace_back(rule.substr(RULE_PATH_POS,
-				rule.length()));
+			sort(userRuleInfo.begin(), userRuleInfo.end(),
+				[](const string &str1, const string &str2)
+				{
+					return str1.substr(RULE_PATH_POS,
+						str1.length())
+						< str2.substr(RULE_PATH_POS,
+							str2.length());
+				});
+
+			userRulePaths.clear();
+			for (const auto& rule : userRuleInfo)
+			{
+				userRulePaths.emplace_back(rule);
+				userRulePaths.back() = userRulePaths.back().substr(
+					RULE_PATH_POS, userRulePaths.back().size());
+			}
+
+			userRulesNotSorted = false;
 		}
 
-		userRulesNotSorted = false;
+		if (rulesAdded)
+		{
+			sort(ruleInfo.begin(), ruleInfo.end(),
+				[](const string &str1, const string &str2)
+				{
+					return str1.substr(RULE_PATH_POS,
+						str1.find("|{") - 4)
+						< str2.substr(RULE_PATH_POS,
+							str2.find("|{") - 4);
+				});
+
+			rulePaths.clear();
+			for (const auto& rule : ruleInfo)
+			{
+				rulePaths.emplace_back(rule);
+				rulePaths.back() = rulePaths.back().substr(
+					RULE_PATH_POS, rulePaths.back().find("|{") - 4);
+			}
+
+			rulesAdded = false;
+		}
 	}
-
-	if (rulesAdded)
+	catch (const exception &e)
 	{
-		sort(ruleInfo.begin(), ruleInfo.end(),
-			[](const string &str1, const string &str2)
-			{
-				return str1.substr(RULE_PATH_POS,
-					str1.find("|{") - 4)
-					< str2.substr(RULE_PATH_POS,
-						str2.find("|{") - 4);
-			});
-
-		rulePaths.clear();
-		for (const auto& rule : ruleInfo)
-		{
-			rulePaths.emplace_back(rule.substr(RULE_PATH_POS,
-				rule.find("|{") - 4));
-		}
-
-		rulesAdded = false;
+		cerr << '\n' << e.what();
 	}
 }
 
@@ -823,13 +835,14 @@ void DataFileManager::InsertNewEntries(const vector<RuleDataPtr>& ruleData)
 {
 	try
 	{
-		if (!ruleData.empty())
-			rulesAdded = true;
+		rulesAdded = true;
 
 		for (const auto& rule : ruleData)
 		{
-			rulePaths.emplace_back(get<FILE_LOCATION>(*rule));
 			ruleInfo.emplace_back(RuleDataToString(*rule));
+			rulePaths.emplace_back(ruleInfo.back());
+			rulePaths.back() = rulePaths.back().substr(
+				RULE_PATH_POS, rulePaths.back().find("|{") - 4);
 		}
 	}
 	catch (const exception &e)
@@ -906,7 +919,7 @@ void DataFileManager::RemoveOldEntries()
 			auto removedRulesBegin = lower_bound(rulePaths.begin(), rulePaths.end(), rule);
 
 			auto removedRulesEnd = upper_bound(removedRulesBegin, rulePaths.end(), rule,
-				[](const string &str1, const string &str2) noexcept
+				[](const string_view &str1, const string_view &str2) noexcept
 				{
 					return str1 < str2.substr(0, str1.length());
 				});

@@ -510,7 +510,7 @@ void SecPolicy::CheckRules()
 	getline(ruleStrings, temp);
 	getline(ruleStrings, temp);
 
-	while (temp.back() == '*')
+	while (temp.back() == '*' || temp.back() == '#')
 		getline(ruleStrings, temp);
 
 	ruleStringQueue.enqueue(move(temp));
@@ -600,11 +600,22 @@ void SecPolicy::CheckGlobalSettings()
 		}
 
 		RuleData ruleData;
-		auto exePath = fs::current_path().string() + '\\' + programName;
+		auto exePath = [=]()
+		{
+			auto temp = fs::current_path().string() + '\\' + programName;
+			for (auto &letter : temp)
+				letter = std::move(tolower(letter));
+
+			return temp;
+		} ();
+
 		auto result = dataFileMan.FindRule(SecOption::WHITELIST, RuleType::HASHRULE, exePath, ruleData);
 		if (result != RuleFindResult::EXACT_MATCH)
 		{
 			cout << "\nBASP isn't explicitly allowed, whitelisting now...";
+
+			enteredRules.emplace_back(SecOption::WHITELIST, RuleType::HASHRULE, exePath);
+
 			auto tempPath = fs::temp_directory_path().string() + '\\'  + programName;
 			
 			fs::copy_file(exePath, tempPath);
