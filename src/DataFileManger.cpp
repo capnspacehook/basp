@@ -30,8 +30,8 @@ bool DataFileManager::OpenPolicyFile()
 
 	//attempt to decrypt file
 	GCM<AES>::Decryption decryptor;
-	decryptor.SetKeyWithIV(kdfHash->data(), KEY_SIZE, kdfHash->data() + KEY_SIZE, KEY_SIZE);
-	kdfHash.ProtectMemory(true);
+	decryptor.SetKeyWithIV(kdfHash.data(), KEY_SIZE, kdfHash.data() + KEY_SIZE, KEY_SIZE);
+	//kdfHash.ProtectMemory(true);
 
 	AuthenticatedDecryptionFilter adf(decryptor, new StringSink(temp),
 		AuthenticatedDecryptionFilter::MAC_AT_END, TAG_SIZE);
@@ -69,8 +69,8 @@ bool DataFileManager::OpenPolicyFile()
 			FILE_ATTRIBUTE_NORMAL,
 			nullptr);
 
-		*policyData = temp;
-		istringstream iss(*policyData);
+		policyData = temp;
+		istringstream iss(policyData);
 
 		//skip header 
 		getline(iss, temp);
@@ -125,40 +125,40 @@ bool DataFileManager::OpenPolicyFile()
 void DataFileManager::ClosePolicyFile()
 {
 	GCM<AES>::Encryption encryptor;
-	encryptor.SetKeyWithIV(kdfHash->data(), KEY_SIZE, kdfHash->data() + KEY_SIZE, KEY_SIZE);
-	kdfHash.ProtectMemory(true);
+	encryptor.SetKeyWithIV(kdfHash.data(), KEY_SIZE, kdfHash.data() + KEY_SIZE, KEY_SIZE);
+	//kdfHash.ProtectMemory(true);
 	
 	//place salt unencrypted in beginning of file
 	FileSink file(policyFileName.c_str());
-	ArraySource as(*kdfSalt, kdfSalt->size(), true,
+	ArraySource as(kdfSalt, kdfSalt.size(), true,
 		new Redirector(file));
-	kdfSalt.ProtectMemory(true);
+	//kdfSalt.ProtectMemory(true);
 
-	if (policyData->substr(0, policyFileHeader.length()) != policyFileHeader
-		&& policyData->substr(0, KEY_SIZE) != string(KEY_SIZE, 'A'))
+	if (policyData.substr(0, policyFileHeader.length()) != policyFileHeader
+		&& policyData.substr(0, KEY_SIZE) != string(KEY_SIZE, 'A'))
 	{
 		//prepend header and global policy settings
-		policyData->insert(0, policyFileHeader);
-		policyData->insert(policyFileHeader.length(), GetGlobalSettings() + '\n');
+		policyData.insert(0, policyFileHeader);
+		policyData.insert(policyFileHeader.length(), GetGlobalSettings() + '\n');
 
 		//prepend dummy data that will be skipped
-		policyData->insert(0, KEY_SIZE, 'A');
+		policyData.insert(0, KEY_SIZE, 'A');
 	}
 	
-	else if (policyData->substr(0, policyFileHeader.length()) == policyFileHeader)
+	else if (policyData.substr(0, policyFileHeader.length()) == policyFileHeader)
 	{
 		//prepend dummy data that will be skipped
-		policyData->insert(0, KEY_SIZE, 'A');
+		policyData.insert(0, KEY_SIZE, 'A');
 	}
 
-	StringSource updatedData(*policyData, false);
+	StringSource updatedData(policyData, false);
 	//skip part containing the salt
 	updatedData.Pump(KEY_SIZE);
 	updatedData.Attach(new AuthenticatedEncryptionFilter(
 		encryptor, new Redirector(file), false, TAG_SIZE));
 	updatedData.PumpAll();
 
-	policyData.ProtectMemory(true);
+	//policyData.ProtectMemory(true);
 }
 
 //returns global policy data as in registry. If no global settings exist,
@@ -938,28 +938,28 @@ void DataFileManager::WriteChanges()
 {
 	SortRules();
 
-	policyData->clear();
+	policyData.clear();
 
 	for (const auto& line : userRuleInfo)
 	{
 		if (fs::is_directory(
 			line.substr(RULE_PATH_POS, line.length())))
-			*policyData += line + R"(\*)" + '\n';
+			policyData += line + R"(\*)" + '\n';
 
 		else 
-			*policyData += line + '#' + '\n';
+			policyData += line + '#' + '\n';
 	}
 		
 
 	for (const auto& line : ruleInfo)
-		*policyData += line;
+		policyData += line;
 
 	policyDataModified = true;
 }
 
 void DataFileManager::VerifyPassword(string &&guessPwd)
 {
-	if (CheckIfRunBefore())
+	if (fs::exists(policyFileName.c_str()))
 		CheckPassword(move(guessPwd));
 
 	else
@@ -969,72 +969,72 @@ void DataFileManager::VerifyPassword(string &&guessPwd)
 	}
 }
 
-bool DataFileManager::CheckIfRunBefore() const
-{
-	using namespace winreg;
-
-	try
-	{
-		bool notFirstTime = false;
-		
-		if (!fs::exists(policyFileName.c_str()))
-		{
-			RegKey hiddenKey;
-			bool keyExists = false;
-
-			if (!hiddenKey.Open(HKEY_CLASSES_ROOT, ".brm", KEY_READ))
-			{
-				hiddenKey.Create(HKEY_CLASSES_ROOT, ".brm", KEY_READ | KEY_WRITE);
-				hiddenKey.SetStringValue("(Default)", "brmfile");
-				hiddenKey.Close();
-			}
-
-			else
-				keyExists = true;
-
-			hiddenKey.Create(HKEY_LOCAL_MACHINE, R"(SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services)", KEY_READ | KEY_WRITE);
-			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "AllowShellLogon"))
-				hiddenKey.SetDwordValue("AllowShellLogon", 1);
-
-			else
-				keyExists = true;
-
-			hiddenKey.Close();
-			hiddenKey.Create(HKEY_CURRENT_CONFIG, R"(System\CurrentControlSet\Control\Print)", KEY_READ | KEY_WRITE);
-			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "PrintEnable"))
-				hiddenKey.SetDwordValue("PrintEnable", 1);
-			
-			else
-				keyExists = true;
-
-			if (keyExists)
-			{
-				string guessPwd;
-				while (true)
-				{
-					cout << "Enter the password:\n";
-					GetPassword(guessPwd);
-					cout << "Verifying password...";
-					Sleep(500);
-					cout << "\nInvalid password entered\n";
-				}
-			}
-		}
-
-		else
-			notFirstTime = true;
-
-		return notFirstTime;
-	}
-	catch (const RegException &e)
-	{
-		cerr << '\n' << e.what();
-	}
-	catch (const exception &e)
-	{
-		cerr << '\n' << e.what();
-	}
-}
+//bool DataFileManager::CheckIfRunBefore() const
+//{
+//	using namespace winreg;
+//
+//	try
+//	{
+//		bool notFirstTime = false;
+//		
+//		if (!fs::exists(policyFileName.c_str()))
+//		{
+//			RegKey hiddenKey;
+//			bool keyExists = false;
+//
+//			if (!hiddenKey.Open(HKEY_CLASSES_ROOT, ".brm", KEY_READ))
+//			{
+//				hiddenKey.Create(HKEY_CLASSES_ROOT, ".brm", KEY_READ | KEY_WRITE);
+//				hiddenKey.SetStringValue("(Default)", "brmfile");
+//				hiddenKey.Close();
+//			}
+//
+//			else
+//				keyExists = true;
+//
+//			hiddenKey.Create(HKEY_LOCAL_MACHINE, R"(SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services)", KEY_READ | KEY_WRITE);
+//			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "AllowShellLogon"))
+//				hiddenKey.SetDwordValue("AllowShellLogon", 1);
+//
+//			else
+//				keyExists = true;
+//
+//			hiddenKey.Close();
+//			hiddenKey.Create(HKEY_CURRENT_CONFIG, R"(System\CurrentControlSet\Control\Print)", KEY_READ | KEY_WRITE);
+//			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "PrintEnable"))
+//				hiddenKey.SetDwordValue("PrintEnable", 1);
+//			
+//			else
+//				keyExists = true;
+//
+//			if (keyExists)
+//			{
+//				string guessPwd;
+//				while (true)
+//				{
+//					cout << "Enter the password:\n";
+//					GetPassword(guessPwd);
+//					cout << "Verifying password...";
+//					Sleep(500);
+//					cout << "\nInvalid password entered\n";
+//				}
+//			}
+//		}
+//
+//		else
+//			notFirstTime = true;
+//
+//		return notFirstTime;
+//	}
+//	catch (const RegException &e)
+//	{
+//		cerr << '\n' << e.what();
+//	}
+//	catch (const exception &e)
+//	{
+//		cerr << '\n' << e.what();
+//	}
+//}
 
 void DataFileManager::CheckPassword(string &&guessPwd)
 {
@@ -1046,7 +1046,7 @@ void DataFileManager::CheckPassword(string &&guessPwd)
 	
 	//get salt from beginning of file
 	FileSource encPolicyFile(policyFileName.c_str(), false);
-	encPolicyFile.Attach(new ArraySink(*kdfSalt, kdfSalt->size()));
+	encPolicyFile.Attach(new ArraySink(kdfSalt, kdfSalt.size()));
 	encPolicyFile.Pump(KEY_SIZE);
 	
 	do
@@ -1061,17 +1061,17 @@ void DataFileManager::CheckPassword(string &&guessPwd)
 
 		PKCS5_PBKDF2_HMAC<SHA256> kdf;
 		kdf.DeriveKey(
-			kdfHash->data(),
-			kdfHash->size(),
+			kdfHash.data(),
+			kdfHash.size(),
 			0,
 			(BYTE*)guessPwd.data(),
 			guessPwd.size(),
-			kdfSalt->data(),
-			kdfSalt->size(),
+			kdfSalt.data(),
+			kdfSalt.size(),
 			iterations);
 
-		kdfHash.ProtectMemory(true);
-		kdfSalt.ProtectMemory(true);
+		//kdfHash.ProtectMemory(true);
+		//kdfSalt.ProtectMemory(true);
 
 		validPwd = OpenPolicyFile();
 
@@ -1125,23 +1125,23 @@ void DataFileManager::SetNewPassword(string &&guessPwd)
 	cout << "Computing new password hash...";
 
 	AutoSeededRandomPool prng;
-	prng.GenerateBlock(*kdfSalt, KEY_SIZE);
+	prng.GenerateBlock(kdfSalt, KEY_SIZE);
 
 	PKCS5_PBKDF2_HMAC<SHA256> kdf;
 	kdf.DeriveKey(
-		kdfHash->data(),
-		kdfHash->size(),
+		kdfHash.data(),
+		kdfHash.size(),
 		0,
 		(BYTE*)newPass1.data(),
 		newPass1.size(),
-		kdfSalt->data(),
-		kdfSalt->size(),
+		kdfSalt.data(),
+		kdfSalt.size(),
 		iterations);
 
 	SecureZeroMemory(&newPass1, sizeof(newPass1));
 
-	kdfHash.ProtectMemory(true);
-	kdfSalt.ProtectMemory(true);
+	//kdfHash.ProtectMemory(true);
+	//kdfSalt.ProtectMemory(true);
 
 	winreg::RegKey policySettings(
 		HKEY_LOCAL_MACHINE,

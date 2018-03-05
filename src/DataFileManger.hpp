@@ -27,9 +27,11 @@ namespace AppSecPolicy
 	public:
 		explicit DataFileManager(std::string &prgmName) : policyFileName(prgmName + ":Zone.Idenitfier")
 		{
-			kdfSalt.assign(SecByteBlock(KEY_SIZE));
-			kdfHash.assign(SecByteBlock(KEY_SIZE * 2));
-			policyData.assign(std::string());
+			//kdfSalt.assign(SecByteBlock(KEY_SIZE));
+			//kdfHash.assign(SecByteBlock(KEY_SIZE * 2));
+			//policyData.assign(std::string());
+			kdfSalt.CleanGrow(KEY_SIZE);
+			kdfHash.CleanGrow(KEY_SIZE * 2);
 		}
 		~DataFileManager()
 		{	
@@ -43,9 +45,9 @@ namespace AppSecPolicy
 		}
 		bool AreRulesCreated()
 		{
-			const auto foundPos = policyData->find('\n', KEY_SIZE + policyFileHeader.size());
-			const bool rulesCreated = foundPos == policyData->size() - 1;
-			policyData.ProtectMemory(true);
+			const auto foundPos = policyData.find('\n', KEY_SIZE + policyFileHeader.size());
+			const bool rulesCreated = foundPos == policyData.size() - 1;
+			//policyData.ProtectMemory(true);
 			return rulesCreated;
 		}
 		std::string GetGlobalSettings()
@@ -63,8 +65,8 @@ namespace AppSecPolicy
 		std::string GetCurrentPolicySettings() const;
 		std::string GetRuleList()
 		{
-			std::string ruleList = *policyData;
-			policyData.ProtectMemory(true);
+			std::string ruleList = policyData;
+			//policyData.ProtectMemory(true);
 			return ruleList;
 		}
 
@@ -103,13 +105,13 @@ namespace AppSecPolicy
 		const unsigned iterations = 1000;	//iterations for PBKDF2
 		const unsigned TAG_SIZE = AES::BLOCKSIZE;
 		const unsigned KEY_SIZE = AES::MAX_KEYLENGTH;
-		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfSalt;
-		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfHash;
+		SecByteBlock kdfSalt;
+		SecByteBlock kdfHash;
 
 		HANDLE policyFileHandle;
 		const std::string policyFileName;
 		const std::string_view policyFileHeader = "Policy Settings\n";
-		ProtectedPtr<std::string, StringSerializer> policyData;
+		std::string policyData;
 		
 		std::string globalPolicySettings;
 
