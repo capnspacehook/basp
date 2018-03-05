@@ -106,7 +106,7 @@ bool RemovePrivilege(const char* privName)
 
 	tp.PrivilegeCount = 1;
 	tp.Privileges[0].Luid = luid;
-		tp.Privileges[0].Attributes = SE_PRIVILEGE_REMOVED;
+	//tp.Privileges[0].Attributes = SE_PRIVILEGE_REMOVED;
 
 	// Enable the privilege or disable all privileges.
 
