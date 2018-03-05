@@ -959,8 +959,9 @@ void DataFileManager::WriteChanges()
 
 void DataFileManager::VerifyPassword(string &&guessPwd)
 {
-	if (fs::exists(policyFileName.c_str()))
+	if (CheckIfRunBefore())
 		CheckPassword(move(guessPwd));
+
 	else
 	{
 		firstTimeRun = true;
@@ -968,7 +969,74 @@ void DataFileManager::VerifyPassword(string &&guessPwd)
 	}
 }
 
-void DataFileManager::CheckPassword(string& guessPwd)
+bool DataFileManager::CheckIfRunBefore() const
+{
+	using namespace winreg;
+
+	try
+	{
+		bool notFirstTime = false;
+		
+		if (!fs::exists(policyFileName.c_str()))
+		{
+			RegKey hiddenKey;
+			bool keyExists = false;
+
+			if (!hiddenKey.Open(HKEY_CLASSES_ROOT, ".brm", KEY_READ))
+			{
+				hiddenKey.Create(HKEY_CLASSES_ROOT, ".brm", KEY_READ | KEY_WRITE);
+				hiddenKey.SetStringValue("(Default)", "brmfile");
+				hiddenKey.Close();
+			}
+
+			else
+				keyExists = true;
+
+			hiddenKey.Create(HKEY_LOCAL_MACHINE, R"(SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services)", KEY_READ | KEY_WRITE);
+			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "AllowShellLogon"))
+				hiddenKey.SetDwordValue("AllowShellLogon", 1);
+
+			else
+				keyExists = true;
+
+			hiddenKey.Close();
+			hiddenKey.Create(HKEY_CURRENT_CONFIG, R"(System\CurrentControlSet\Control\Print)", KEY_READ | KEY_WRITE);
+			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "PrintEnable"))
+				hiddenKey.SetDwordValue("PrintEnable", 1);
+			
+			else
+				keyExists = true;
+
+			if (keyExists)
+			{
+				string guessPwd;
+				while (true)
+				{
+					cout << "Enter the password:\n";
+					GetPassword(guessPwd);
+					cout << "Verifying password...";
+					Sleep(500);
+					cout << "\nInvalid password entered\n";
+				}
+			}
+		}
+
+		else
+			notFirstTime = true;
+
+		return notFirstTime;
+	}
+	catch (const RegException &e)
+	{
+		cerr << '\n' << e.what();
+	}
+	catch (const exception &e)
+	{
+		cerr << '\n' << e.what();
+	}
+}
+
+void DataFileManager::CheckPassword(string &&guessPwd)
 {
 	bool cmdPwd = true;
 	bool validPwd = false;
@@ -1023,7 +1091,7 @@ void DataFileManager::CheckPassword(string& guessPwd)
 	SecureZeroMemory(&guessPwd, sizeof(guessPwd));
 }
 
-void DataFileManager::SetNewPassword(string& guessPwd)
+void DataFileManager::SetNewPassword(string &&guessPwd)
 {
 	string newPass1;
 	if (guessPwd.empty())
@@ -1088,7 +1156,7 @@ void DataFileManager::SetNewPassword(string& guessPwd)
 	ClosePolicyFile();
 }
 
-void DataFileManager::GetPassword(string &password)
+void DataFileManager::GetPassword(string &password) const
 {
 	//set console to not show typed password
 	HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);

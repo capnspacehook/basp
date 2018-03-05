@@ -72,8 +72,8 @@ namespace AppSecPolicy
 		static std::string RuleDataToString(const RuleData&);
 
 		void VerifyPassword(std::string&&);
-		void CheckPassword(std::string&);
-		void SetNewPassword(std::string&);
+		void CheckPassword(std::string&&);
+		void SetNewPassword(std::string&&);
 		RuleFindResult FindRule(SecOption, RuleType,
 			const std::string&, RuleData&) const;
 		std::vector<RuleData> FindRulesInDir(const std::string&) const;
@@ -87,7 +87,8 @@ namespace AppSecPolicy
 		void WriteChanges();
 
 	private:
-		void GetPassword(std::string&);
+		bool CheckIfRunBefore() const;
+		void GetPassword(std::string&) const;
 		bool OpenPolicyFile();
 		void ClosePolicyFile();
 		

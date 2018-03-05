@@ -546,7 +546,7 @@ void HashRule::WriteToRegistry(const string_view &fileName, SecOption policy)
 			policyPath,
 			KEY_WRITE);
 
-		hashRuleKey.SetStringValue("Description", fileName);
+		hashRuleKey.SetStringValueWithSV("Description", fileName);
 		hashRuleKey.SetStringValue("FriendlyName", friendlyName);
 		hashRuleKey.SetDwordValue("HashAlg", hashAlg);
 		hashRuleKey.SetBinaryValue("ItemData", itemData);
