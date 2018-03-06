@@ -51,6 +51,7 @@ namespace AppSecPolicy
 		void RemoveRules(std::vector<std::string> &paths);
 		void CheckRules();
 		void ListRules() const;
+		void ChangePassword();
 
 	protected:
 		friend class HashRule;
@@ -72,6 +73,7 @@ namespace AppSecPolicy
 		static moodycamel::ConcurrentQueue<DirInfo> dirItQueue;
 		static moodycamel::ConcurrentQueue<FileInfo> fileCheckQueue;
 		static moodycamel::ConcurrentQueue<RuleAction> ruleQueue;
+		static moodycamel::ConcurrentQueue<RmRuleInfo> removeQueue;
 		static moodycamel::ConcurrentQueue<RuleData> ruleCheckQueue;
 		static moodycamel::ConcurrentQueue<std::string> ruleStringQueue;
 

@@ -99,7 +99,7 @@ namespace AppSecPolicy
 			while (SecPolicy::ruleStringQueue.try_dequeue(ruleStrCtok, temp))
 			{
 				ruleData = DataFileManager::StringToRuleData(temp);
-				SecPolicy::ruleCheckQueue.enqueue(ruleCheckPtoc, move(ruleData));
+				SecPolicy::ruleCheckQueue.enqueue(ruleCheckPtoc, ruleData);
 			}
 
 			SecPolicy::doneProducers++;

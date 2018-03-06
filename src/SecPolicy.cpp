@@ -29,6 +29,7 @@ atomic_bool SecPolicy::fileCheckingNotDone = true;
 ConcurrentQueue<DirInfo> SecPolicy::dirItQueue;
 ConcurrentQueue<FileInfo> SecPolicy::fileCheckQueue;
 ConcurrentQueue<RuleAction> SecPolicy::ruleQueue;
+ConcurrentQueue<RmRuleInfo> SecPolicy::removeQueue;
 ConcurrentQueue<RuleData> SecPolicy::ruleCheckQueue;
 ConcurrentQueue<string> SecPolicy::ruleStringQueue;
 
@@ -126,7 +127,7 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 				ProcessRules();
 				if (directories.empty())
 				{
-					RuleConsumer ruleConsumer(updateRules);
+					RuleConsumer ruleConsumer(updateRules, tempRuleCreation);
 					ruleConsumer.ConsumeRules();
 				}
 			}
@@ -192,7 +193,7 @@ void SecPolicy::TempRun(const string &path)
 		if (size > 0)
 		{
 			//create temporary hash rule
-			HashRule tempRule(updateRules);
+			HashRule tempRule(updateRules, tempRuleCreation);
 			auto tempRuleData = make_shared<RuleData>(RuleData());
 			get<SEC_OPTION>(*tempRuleData) = SecOption::WHITELIST;
 			get<RULE_TYPE>(*tempRuleData) = ruleType;
@@ -353,7 +354,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 			for (unsigned i = 0; i < initThreadCnt; i++)
 				ruleConsumers.emplace_back(
 					&RuleConsumer::RemoveRules,
-					RuleConsumer(updateRules));
+					RuleConsumer(updateRules, tempRuleCreation));
 		}
 
 		if (switchedRules)
@@ -361,7 +362,7 @@ void SecPolicy::TempRun(const string &dir, const string &file)
 			for (unsigned i = 0; i < initThreadCnt; i++)
 				ruleConsumers.emplace_back(
 					&RuleConsumer::ConsumeRules,
-					RuleConsumer(updateRules));
+					RuleConsumer(updateRules, tempRuleCreation));
 		}
 
 		for (auto &t : ruleConsumers)
@@ -417,7 +418,7 @@ void SecPolicy::UpdateRules(const vector<string> &paths)
 		{
 			ruleConsumers.emplace_back(
 				&RuleConsumer::ConsumeRules,
-				RuleConsumer(updateRules));
+				RuleConsumer(updateRules, tempRuleCreation));
 		}
 
 		for (auto &t : ruleConsumers)
@@ -451,14 +452,12 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 			if (!rulesInDir.empty())
 			{
 				for (const auto &rule : rulesInDir)
-					ruleQueue.enqueue(make_tuple(
-						ModificationType::REMOVED, 0ULL, make_shared<RuleData>(rule)));
+					removeQueue.enqueue(make_pair(
+						get<FILE_LOCATION>(rule), get<SEC_OPTION>(rule)));
 			}
 
 			else
-			{
 				cerr << "\nCannot remove rules: no rules exist in " << file;
-			}
 		}
 
 		else if (fs::is_regular_file(file))
@@ -469,8 +468,8 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 			{
 				cout << "\nRemoving rule for " << file << "...";
 
-				ruleQueue.enqueue(make_tuple(
-					ModificationType::REMOVED, 0ULL, make_shared<RuleData>(ruleData)));
+				removeQueue.enqueue(make_pair(
+					get<FILE_LOCATION>(ruleData), get<SEC_OPTION>(ruleData)));
 			}
 
 			else
@@ -481,7 +480,7 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 	for (unsigned i = 0; i < initThreadCnt; i++)
 		ruleConsumers.emplace_back(
 			&RuleConsumer::RemoveRules,
-			RuleConsumer(updateRules));
+			RuleConsumer(updateRules, tempRuleCreation));
 
 	for (auto &t : ruleConsumers)
 		t.join();
@@ -529,7 +528,68 @@ void SecPolicy::CheckRules()
 	{
 		ruleConsumers.emplace_back(
 			&RuleConsumer::CheckRules,
-			RuleConsumer(updateRules));
+			RuleConsumer(updateRules, tempRuleCreation));
+	}
+
+	RegKey blockKeys(
+		HKEY_LOCAL_MACHINE,
+		R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\0\Hashes)",
+		KEY_READ | KEY_WRITE);
+
+	RegKey allowKeys(
+		HKEY_LOCAL_MACHINE,
+		R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers\262144\Hashes)",
+		KEY_READ | KEY_WRITE);
+
+	auto registryBlockRules = blockKeys.EnumSubKeys();
+	auto registryAllowRules = allowKeys.EnumSubKeys();
+
+	sort(registryBlockRules.begin(), registryBlockRules.end());
+	sort(registryAllowRules.begin(), registryAllowRules.end());
+
+	constexpr char blackList = static_cast<char>(SecOption::BLACKLIST) + '0';
+	vector<string> userCreatedRules = dataFileMan.GetRuleInfo();
+	auto pivotPnt = partition_point(userCreatedRules.begin(), userCreatedRules.end(), [=](const string &str)
+	{
+		return str[SEC_OPTION] == blackList;
+	});
+
+	for (auto &rule : userCreatedRules)
+	{
+		auto guidBegin = rule.find("|{") + 1;
+		rule = rule.substr(guidBegin, rule.find("}|") - guidBegin + 1);
+	}
+
+	sort(userCreatedRules.begin(), pivotPnt);
+	sort(pivotPnt, userCreatedRules.end());
+
+	vector<string> illegallyAllowRules;
+	vector<string> illegallyBlockRules;
+
+	set_difference(
+		registryBlockRules.begin(),
+		registryBlockRules.end(),
+		userCreatedRules.begin(),
+		pivotPnt,
+		back_inserter(illegallyBlockRules));
+
+	set_difference(
+		registryAllowRules.begin(),
+		registryAllowRules.end(),
+		pivotPnt,
+		userCreatedRules.end(),
+		back_inserter(illegallyAllowRules));
+
+	if (!illegallyBlockRules.empty())
+	{
+		for (const auto &rule : illegallyBlockRules)
+			removeQueue.enqueue(make_pair(rule, SecOption::BLACKLIST));
+	}
+
+	if (!illegallyAllowRules.empty())
+	{
+		for (const auto &rule : illegallyAllowRules)
+			removeQueue.enqueue(make_pair(rule, SecOption::WHITELIST));
 	}
 
 	for (auto &t : ruleProducers)
@@ -538,7 +598,13 @@ void SecPolicy::CheckRules()
 	for (auto &t : ruleConsumers)
 		t.join();
 
-	if (updatedRules == 0 && createdRules == 0)
+	if (!illegallyBlockRules.empty() || !illegallyAllowRules.empty())
+	{
+		RuleConsumer ruleConsumer(updateRules, tempRuleCreation);
+		ruleConsumer.RemoveRules();
+	}
+
+	if (updatedRules == 0 && createdRules == 0 && removedRules == 0)
 		cout << "\nFinished checking rules. All rules are correct\n";
 
 	else
@@ -549,6 +615,11 @@ void SecPolicy::CheckRules()
 void SecPolicy::ListRules() const
 {
 	dataFileMan.ListRules(listAllRules);
+}
+
+void SecPolicy::ChangePassword()
+{
+	dataFileMan.SetNewPassword(string{});
 }
 
 //makes sure all the nessesary settings are in place to apply a SRP policy,
@@ -614,8 +685,6 @@ void SecPolicy::CheckGlobalSettings()
 		{
 			cout << "\nBASP isn't explicitly allowed, whitelisting now...";
 
-			enteredRules.emplace_back(SecOption::WHITELIST, RuleType::HASHRULE, exePath);
-
 			auto tempPath = fs::temp_directory_path().string() + '\\'  + programName;
 			
 			fs::copy_file(exePath, tempPath);
@@ -623,9 +692,10 @@ void SecPolicy::CheckGlobalSettings()
 			get<FILE_LOCATION>(ruleData) = tempPath;
 			createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
-			HashRule hashRule(false);
+			HashRule hashRule(false, false);
 			hashRule.CreateNewHashRule(createdRulesData.back());
 
+			enteredRules.emplace_back(SecOption::WHITELIST, RuleType::HASHRULE, exePath);
 			get<FILE_LOCATION>(*createdRulesData.back()) = exePath;
 			fs::remove(tempPath);
 
@@ -715,7 +785,7 @@ void SecPolicy::ProcessRules()
 						|| ruleConsumers.size() < initThreadCnt + doneProducers))
 						ruleConsumers.emplace_back(
 							&RuleConsumer::ConsumeRules,
-							RuleConsumer(updateRules));
+							RuleConsumer(updateRules, tempRuleCreation));
 				}
 			}
 		} while (filesLeft);
@@ -824,10 +894,10 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 				{
 					ruleConsumers.clear();
 					for (const auto &rule : deletedFiles)
-						ruleQueue.enqueue(move(make_tuple(
-							ModificationType::REMOVED, 0ULL, make_shared<RuleData>(rule))));
+						removeQueue.enqueue(make_pair(
+							get<FILE_LOCATION>(rule), get<SEC_OPTION>(rule)));
 
-					RuleConsumer ruleConsumer(updateRules);
+					RuleConsumer ruleConsumer(updateRules, tempRuleCreation);
 					ruleConsumer.RemoveRules();
 
 					dataFileMan.RemoveDeletedFiles(deletedFiles);

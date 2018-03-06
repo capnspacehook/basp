@@ -25,7 +25,7 @@ namespace AppSecPolicy
 	class DataFileManager
 	{
 	public:
-		explicit DataFileManager(std::string &prgmName) : policyFileName(prgmName + ":Zone.Idenitfier")
+		explicit DataFileManager(std::string &prgmName) : policyFileName("Policy Settings.dat")
 		{
 			//kdfSalt.assign(SecByteBlock(KEY_SIZE));
 			//kdfHash.assign(SecByteBlock(KEY_SIZE * 2));
@@ -68,6 +68,10 @@ namespace AppSecPolicy
 			std::string ruleList = policyData;
 			//policyData.ProtectMemory(true);
 			return ruleList;
+		}
+		std::vector<std::string> GetRuleInfo() const
+		{
+			return ruleInfo;
 		}
 
 		static RuleData StringToRuleData(const std::string&);

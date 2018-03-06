@@ -72,7 +72,12 @@ void HashRule::SwitchRule(const uintmax_t &fileSize, RuleDataPtr &ruleData)
 			itemSize = get<ITEM_SIZE>(*ruleData);
 			itemData = get<ITEM_DATA>(*ruleData);
 			sha256Hash = get<SHA256_HASH>(*ruleData);
-			EnumCreationTime();
+
+			if (tempRuleCreation)
+				lastModified = get<LAST_MODIFIED>(*ruleData);
+				
+			else
+				EnumCreationTime();
 
 			WriteToRegistry(fileName, swappedOp);
 			get<MOD_STATUS>(*ruleData) = ModificationType::SWITCHED;
@@ -168,7 +173,12 @@ void HashRule::UpdateRule(const uintmax_t &fileSize, RuleData &ruleData, bool fi
 	if (!fileHashed)
 		HashDigests(get<FILE_LOCATION>(ruleData));
 
-	EnumCreationTime();
+	if (tempRuleCreation)
+		lastModified = get<LAST_MODIFIED>(ruleData);
+
+	else
+		EnumCreationTime();
+
 	WriteToRegistry(get<FILE_LOCATION>(ruleData),
 		get<SEC_OPTION>(ruleData));
 

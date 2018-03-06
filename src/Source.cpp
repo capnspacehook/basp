@@ -15,7 +15,7 @@ bool RemovePrivilege(const char*);
 
 int main(int argc, char *argv[])
 {
-	CheckElevated();
+	//CheckElevated();
 	RemovePrivilege("SeAssignPrimaryTokenPrivilege");
 	RemovePrivilege("SeCreateTokenPrivilege");
 	RemovePrivilege("SeDebugPrivilege");
@@ -31,6 +31,9 @@ int main(int argc, char *argv[])
 
 	SecPolicy secPolicy(move(parser.programName), move(parser.password), parser.updatingRules, 
 		parser.listRules, parser.listAllRules);
+
+	if (parser.changePassword)
+		secPolicy.ChangePassword();
 
 	if (parser.checkRules)
 		secPolicy.CheckRules();
@@ -76,7 +79,7 @@ void CheckElevated()
 
 	if (!fRet)
 	{
-		cout << "This program requires administrator access to function correctly."
+		cout << "This program requires administrator access to function correctly.\n"
 			<< "Please rerun this program again as an Administrator.\n";
 		exit(-1);
 	}

@@ -969,126 +969,133 @@ void DataFileManager::VerifyPassword(string &&guessPwd)
 	}
 }
 
-//bool DataFileManager::CheckIfRunBefore() const
-//{
-//	using namespace winreg;
-//
-//	try
-//	{
-//		bool notFirstTime = false;
-//		
-//		if (!fs::exists(policyFileName.c_str()))
-//		{
-//			RegKey hiddenKey;
-//			bool keyExists = false;
-//
-//			if (!hiddenKey.Open(HKEY_CLASSES_ROOT, ".brm", KEY_READ))
-//			{
-//				hiddenKey.Create(HKEY_CLASSES_ROOT, ".brm", KEY_READ | KEY_WRITE);
-//				hiddenKey.SetStringValue("(Default)", "brmfile");
-//				hiddenKey.Close();
-//			}
-//
-//			else
-//				keyExists = true;
-//
-//			hiddenKey.Create(HKEY_LOCAL_MACHINE, R"(SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services)", KEY_READ | KEY_WRITE);
-//			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "AllowShellLogon"))
-//				hiddenKey.SetDwordValue("AllowShellLogon", 1);
-//
-//			else
-//				keyExists = true;
-//
-//			hiddenKey.Close();
-//			hiddenKey.Create(HKEY_CURRENT_CONFIG, R"(System\CurrentControlSet\Control\Print)", KEY_READ | KEY_WRITE);
-//			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "PrintEnable"))
-//				hiddenKey.SetDwordValue("PrintEnable", 1);
-//			
-//			else
-//				keyExists = true;
-//
-//			if (keyExists)
-//			{
-//				string guessPwd;
-//				while (true)
-//				{
-//					cout << "Enter the password:\n";
-//					GetPassword(guessPwd);
-//					cout << "Verifying password...";
-//					Sleep(500);
-//					cout << "\nInvalid password entered\n";
-//				}
-//			}
-//		}
-//
-//		else
-//			notFirstTime = true;
-//
-//		return notFirstTime;
-//	}
-//	catch (const RegException &e)
-//	{
-//		cerr << '\n' << e.what();
-//	}
-//	catch (const exception &e)
-//	{
-//		cerr << '\n' << e.what();
-//	}
-//}
+bool DataFileManager::CheckIfRunBefore() const
+{
+	using namespace winreg;
+
+	try
+	{
+		bool notFirstTime = false;
+		
+		if (!fs::exists(policyFileName.c_str()))
+		{
+			RegKey hiddenKey;
+			bool keyExists = false;
+
+			if (!hiddenKey.Open(HKEY_CLASSES_ROOT, ".brm", KEY_READ))
+			{
+				hiddenKey.Create(HKEY_CLASSES_ROOT, ".brm", KEY_READ | KEY_WRITE);
+				hiddenKey.SetStringValue("(Default)", "brmfile");
+				hiddenKey.Close();
+			}
+
+			else
+				keyExists = true;
+
+			hiddenKey.Create(HKEY_LOCAL_MACHINE, R"(SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services)", KEY_READ | KEY_WRITE);
+			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "AllowShellLogon"))
+				hiddenKey.SetDwordValue("AllowShellLogon", 1);
+
+			else
+				keyExists = true;
+
+			hiddenKey.Close();
+			hiddenKey.Create(HKEY_CURRENT_CONFIG, R"(System\CurrentControlSet\Control\Print)", KEY_READ | KEY_WRITE);
+			if (auto subKeys = hiddenKey.EnumValues(); !binary_search(subKeys.cbegin(), subKeys.cend(), "PrintEnable"))
+				hiddenKey.SetDwordValue("PrintEnable", 1);
+			
+			else
+				keyExists = true;
+
+			if (keyExists)
+			{
+				string guessPwd;
+				while (true)
+				{
+					cout << "Enter the password:\n";
+					GetPassword(guessPwd);
+					cout << "Verifying password...";
+					Sleep(500);
+					cout << "\nInvalid password entered\n";
+				}
+			}
+		}
+
+		else
+			notFirstTime = true;
+
+		return notFirstTime;
+	}
+	catch (const RegException &e)
+	{
+		cerr << '\n' << e.what();
+	}
+	catch (const exception &e)
+	{
+		cerr << '\n' << e.what();
+	}
+}
 
 void DataFileManager::CheckPassword(string &&guessPwd)
 {
-	bool cmdPwd = true;
-	bool validPwd = false;
-
-	if (guessPwd.empty())
-		cmdPwd = false;
-	
-	//get salt from beginning of file
-	FileSource encPolicyFile(policyFileName.c_str(), false);
-	encPolicyFile.Attach(new ArraySink(kdfSalt, kdfSalt.size()));
-	encPolicyFile.Pump(KEY_SIZE);
-	
-	do
+	try
 	{
-		if (!cmdPwd)
+		bool cmdPwd = true;
+		bool validPwd = false;
+
+		if (guessPwd.empty())
+			cmdPwd = false;
+
+		//get salt from beginning of file
+		FileSource encPolicyFile(policyFileName.c_str(), false);
+		encPolicyFile.Attach(new ArraySink(kdfSalt, kdfSalt.size()));
+		encPolicyFile.Pump(KEY_SIZE);
+
+		do
 		{
-			cout << "Enter the password:\n";
-			GetPassword(guessPwd);
-		}
+			if (!cmdPwd)
+			{
+				cout << "Enter the password:\n";
+				GetPassword(guessPwd);
+			}
 
-		cout << "Verifying password...";
+			cout << "Verifying password...";
 
-		PKCS5_PBKDF2_HMAC<SHA256> kdf;
-		kdf.DeriveKey(
-			kdfHash.data(),
-			kdfHash.size(),
-			0,
-			(BYTE*)guessPwd.data(),
-			guessPwd.size(),
-			kdfSalt.data(),
-			kdfSalt.size(),
-			iterations);
+			PKCS5_PBKDF2_HMAC<SHA256> kdf;
+			kdf.DeriveKey(
+				kdfHash.data(),
+				kdfHash.size(),
+				0,
+				(BYTE*)guessPwd.data(),
+				guessPwd.size(),
+				kdfSalt.data(),
+				kdfSalt.size(),
+				iterations);
 
-		//kdfHash.ProtectMemory(true);
-		//kdfSalt.ProtectMemory(true);
+			//kdfHash.ProtectMemory(true);
+			//kdfSalt.ProtectMemory(true);
 
-		validPwd = OpenPolicyFile();
+			validPwd = OpenPolicyFile();
 
-		if (validPwd)
-			cout << "done\n";
+			if (validPwd)
+				cout << "done\n";
 
-		else
-		{
-			cout << "\nInvalid password entered\n";
+			else
+			{
+				cout << "\nInvalid password entered\n";
 
-			if (cmdPwd)
-				exit(-1);
-		}
+				if (cmdPwd)
+					exit(-1);
+			}
 
-	} while (!validPwd);
+		} while (!validPwd);
 
-	SecureZeroMemory(&guessPwd, sizeof(guessPwd));
+		SecureZeroMemory(&guessPwd, sizeof(guessPwd));
+	}
+	catch (const exception &e)
+	{
+		cerr << '\n' << e.what();
+	}
 }
 
 void DataFileManager::SetNewPassword(string &&guessPwd)
