@@ -8,7 +8,8 @@ namespace AppSecPolicy
 	class HashRule
 	{
 	public:
-		explicit HashRule(bool update) noexcept : updateRules(update) {}
+		explicit HashRule(bool update, bool tempRules) noexcept 
+			: updateRules(update), tempRuleCreation(tempRules) {}
 		~HashRule() = default;
 		HashRule(HashRule&) = default;
 		HashRule(HashRule&&) = default;
@@ -36,7 +37,10 @@ namespace AppSecPolicy
 		inline bool MakeGUID();
 		inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;
 
-		bool updateRules = false;
+		
+		bool updateRules;
+		bool tempRuleCreation;
+
 		std::string guid;
 		static const std::string fileProps[5];
 		std::string description;

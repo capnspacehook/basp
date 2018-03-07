@@ -72,7 +72,12 @@ void HashRule::SwitchRule(const uintmax_t &fileSize, RuleDataPtr &ruleData)
 			itemSize = get<ITEM_SIZE>(*ruleData);
 			itemData = get<ITEM_DATA>(*ruleData);
 			sha256Hash = get<SHA256_HASH>(*ruleData);
-			EnumCreationTime();
+
+			if (tempRuleCreation)
+				lastModified = get<LAST_MODIFIED>(*ruleData);
+				
+			else
+				EnumCreationTime();
 
 			WriteToRegistry(fileName, swappedOp);
 			get<MOD_STATUS>(*ruleData) = ModificationType::SWITCHED;
@@ -118,11 +123,11 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 	}
 	catch (const RegException &e)
 	{
-		cout << '\n' << e.what();
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
-		cout << '\n' << e.what();
+		cerr << '\n' << e.what();
 	}
 }
 
@@ -168,7 +173,12 @@ void HashRule::UpdateRule(const uintmax_t &fileSize, RuleData &ruleData, bool fi
 	if (!fileHashed)
 		HashDigests(get<FILE_LOCATION>(ruleData));
 
-	EnumCreationTime();
+	if (tempRuleCreation)
+		lastModified = get<LAST_MODIFIED>(ruleData);
+
+	else
+		EnumCreationTime();
+
 	WriteToRegistry(get<FILE_LOCATION>(ruleData),
 		get<SEC_OPTION>(ruleData));
 
@@ -308,7 +318,7 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 	}
 	catch (const RegException &e)
 	{
-		cerr << '\n' << e.what();
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
@@ -565,10 +575,10 @@ void HashRule::WriteToRegistry(const string_view &fileName, SecOption policy)
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << endl;
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cerr << e.what() << endl;
 	}
 }

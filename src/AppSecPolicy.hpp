@@ -58,6 +58,8 @@ namespace AppSecPolicy
 
 	using FileInfo = std::tuple<std::string, std::string, uintmax_t>;
 
+	using RmRuleInfo = std::pair<std::string, SecOption>;
+
 	using RuleDataPtr = std::shared_ptr<RuleData>;
 
 	using RuleAction = std::tuple<ModificationType, uintmax_t,

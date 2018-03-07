@@ -67,6 +67,10 @@ namespace AppSecPolicy
 			policyData.ProtectMemory(true);
 			return ruleList;
 		}
+		std::vector<std::string> GetRuleInfo() const
+		{
+			return ruleInfo;
+		}
 
 		static RuleData StringToRuleData(const std::string&);
 		static std::string RuleDataToString(const RuleData&);

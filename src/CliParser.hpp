@@ -18,7 +18,7 @@ namespace AppSecPolicy
 			if (!result)
 				PrintError(result.errorMessage().c_str());
 
-			if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules || !tempAllowFile.empty() || !tempAllowDir.empty() || checkRules))
+			if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules || !tempAllowFile.empty() || !tempAllowDir.empty() || checkRules || changePassword))
 			{
 				std::cout << R"(
 	     ___          ___          ___                  
@@ -140,6 +140,7 @@ namespace AppSecPolicy
 		bool checkRules = false;
 		std::string password;
 		bool executeAsAdmin = false;
+		bool changePassword = false;
 		std::vector<std::string> fileArgs;
 
 	private:
@@ -228,6 +229,9 @@ namespace AppSecPolicy
 			| clara::detail::Opt(password, "password")
 			["--password"]
 			("Attempts to unlock BASP with password")
+			| clara::detail::Opt(changePassword)
+			["--change-password"]
+			("Change the password for BASP")
 			| clara::detail::Opt(executeAsAdmin)
 			["--admin"]
 			("Executes a temporarily allowed file as Administrator")

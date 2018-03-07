@@ -5,8 +5,6 @@
 
 #include "include\clara.hpp"
 
-#include <iostream>	
-
 using namespace std;
 using namespace AppSecPolicy;
 
@@ -31,6 +29,9 @@ int main(int argc, char *argv[])
 
 	SecPolicy secPolicy(move(parser.programName), move(parser.password), parser.updatingRules, 
 		parser.listRules, parser.listAllRules);
+
+	if (parser.changePassword)
+		secPolicy.ChangePassword();
 
 	if (parser.checkRules)
 		secPolicy.CheckRules();
@@ -76,7 +77,7 @@ void CheckElevated()
 
 	if (!fRet)
 	{
-		cout << "This program requires administrator access to function correctly."
+		cout << "This program requires administrator access to function correctly.\n"
 			<< "Please rerun this program again as an Administrator.\n";
 		exit(-1);
 	}
@@ -106,7 +107,7 @@ bool RemovePrivilege(const char* privName)
 
 	tp.PrivilegeCount = 1;
 	tp.Privileges[0].Luid = luid;
-		tp.Privileges[0].Attributes = SE_PRIVILEGE_REMOVED;
+	tp.Privileges[0].Attributes = SE_PRIVILEGE_REMOVED;
 
 	// Enable the privilege or disable all privileges.
 
