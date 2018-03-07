@@ -175,10 +175,8 @@ string DataFileManager::GetCurrentPolicySettings() const
 			R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers)",
 			KEY_READ | KEY_WRITE);
 		
-		auto values = policyKey.EnumValues();
-
 		//global settings not yet set, set as defaults
-		if (values.size() < 5)
+		if (firstTimeRun)
 		{
 			policyKey.SetDwordValue("AuthenticodeEnabled", 0);
 			policyKey.SetDwordValue("DefaultLevel", 0);
@@ -214,7 +212,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 	}
 	catch (const RegException &e)
 	{
-		cerr << '\n' << e.what();
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
@@ -1028,7 +1026,7 @@ bool DataFileManager::CheckIfRunBefore() const
 	}
 	catch (const RegException &e)
 	{
-		cerr << '\n' << e.what();
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
@@ -1100,67 +1098,74 @@ void DataFileManager::CheckPassword(string &&guessPwd)
 
 void DataFileManager::SetNewPassword(string &&guessPwd)
 {
-	string newPass1;
-	if (guessPwd.empty())
+	try
 	{
-		string newPass2;
-		bool passesMismatch = true;
-
-		do
+		string newPass1;
+		if (guessPwd.empty())
 		{
-			cout << "Enter your new password:\n";
-			GetPassword(newPass1);
+			string newPass2;
+			bool passesMismatch = true;
 
-			cout << "Enter it again:\n";
-			GetPassword(newPass2);
+			do
+			{
+				cout << "Enter your new password:\n";
+				GetPassword(newPass1);
 
-			if (newPass1 != newPass2)
-				cout << "Passwords do not match. Please enter again.\n";
-			else
-				passesMismatch = false;
-		} while (passesMismatch);
+				cout << "Enter it again:\n";
+				GetPassword(newPass2);
 
-		SecureZeroMemory(&newPass2, sizeof(newPass2));
+				if (newPass1 != newPass2)
+					cout << "Passwords do not match. Please enter again.\n";
+				else
+					passesMismatch = false;
+			} while (passesMismatch);
+
+			SecureZeroMemory(&newPass2, sizeof(newPass2));
+		}
+
+		else
+		{
+			newPass1 = move(guessPwd);
+			SecureZeroMemory(&guessPwd, sizeof(guessPwd));
+		}
+
+		cout << "Computing new password hash...";
+
+		AutoSeededRandomPool prng;
+		prng.GenerateBlock(kdfSalt, KEY_SIZE);
+
+		PKCS5_PBKDF2_HMAC<SHA256> kdf;
+		kdf.DeriveKey(
+			kdfHash.data(),
+			kdfHash.size(),
+			0,
+			(BYTE*)newPass1.data(),
+			newPass1.size(),
+			kdfSalt.data(),
+			kdfSalt.size(),
+			iterations);
+
+		SecureZeroMemory(&newPass1, sizeof(newPass1));
+
+		//kdfHash.ProtectMemory(true);
+		//kdfSalt.ProtectMemory(true);
+
+		winreg::RegKey policySettings(
+			HKEY_LOCAL_MACHINE,
+			R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers)",
+			KEY_WRITE);
+
+		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+
+		passwordReset = true;
+
+		cout << "done\n";;
+		ClosePolicyFile();
 	}
-
-	else
+	catch (const exception &e)
 	{
-		newPass1 = move(guessPwd);
-		SecureZeroMemory(&guessPwd, sizeof(guessPwd));
+		cerr << '\n' << e.what();
 	}
-
-	cout << "Computing new password hash...";
-
-	AutoSeededRandomPool prng;
-	prng.GenerateBlock(kdfSalt, KEY_SIZE);
-
-	PKCS5_PBKDF2_HMAC<SHA256> kdf;
-	kdf.DeriveKey(
-		kdfHash.data(),
-		kdfHash.size(),
-		0,
-		(BYTE*)newPass1.data(),
-		newPass1.size(),
-		kdfSalt.data(),
-		kdfSalt.size(),
-		iterations);
-
-	SecureZeroMemory(&newPass1, sizeof(newPass1));
-
-	//kdfHash.ProtectMemory(true);
-	//kdfSalt.ProtectMemory(true);
-
-	winreg::RegKey policySettings(
-		HKEY_LOCAL_MACHINE,
-		"SOFTWARE\\Policies\\Microsoft\\Windows\\Safer\\CodeIdentifiers",
-		KEY_WRITE);
-
-	policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
-
-	passwordReset = true;
-
-	cout << "done\n";;
-	ClosePolicyFile();
 }
 
 void DataFileManager::GetPassword(string &password) const

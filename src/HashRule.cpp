@@ -123,11 +123,11 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 	}
 	catch (const RegException &e)
 	{
-		cout << '\n' << e.what();
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
-		cout << '\n' << e.what();
+		cerr << '\n' << e.what();
 	}
 }
 
@@ -318,7 +318,7 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 	}
 	catch (const RegException &e)
 	{
-		cerr << '\n' << e.what();
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
@@ -575,10 +575,10 @@ void HashRule::WriteToRegistry(const string_view &fileName, SecOption policy)
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << endl;
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << endl;
+		cerr << e.what() << endl;
 	}
 }

@@ -223,9 +223,9 @@ void SecPolicy::TempRun(const string &path)
 			}
 
 			else
-				cout << "Temporarily allowed " << file.string();
+				cout << "\nTemporarily allowed " << file.string();
 
-			cout << ". Executing file now...\n\n";
+			cout << ". Executing file now...\n";
 
 			//start the program up
 			STARTUPINFO si;
@@ -261,7 +261,7 @@ void SecPolicy::TempRun(const string &path)
 				removedRules++;
 				tempRule.RemoveRule(get<RULE_GUID>(*tempRuleData),
 					SecOption::WHITELIST);
-				cout << "\nTemporary rule deleted";
+				cout << "\nTemporary rule deleted\n";
 			}
 
 			else if (result == RuleFindResult::EXACT_MATCH)
@@ -269,7 +269,7 @@ void SecPolicy::TempRun(const string &path)
 				switchedRules++;
 				get<SEC_OPTION>(*tempRuleData) = SecOption::WHITELIST;
 				tempRule.SwitchRule(size, tempRuleData);
-				cout << "\nRule switched back to deny mode";
+				cout << "\nRule switched back to deny mode\n";
 			}
 		}
 		else
@@ -453,7 +453,7 @@ void SecPolicy::RemoveRules(vector<string> &paths)
 			{
 				for (const auto &rule : rulesInDir)
 					removeQueue.enqueue(make_pair(
-						get<FILE_LOCATION>(rule), get<SEC_OPTION>(rule)));
+						get<RULE_GUID>(rule), get<SEC_OPTION>(rule)));
 			}
 
 			else
@@ -563,32 +563,32 @@ void SecPolicy::CheckRules()
 	sort(userCreatedRules.begin(), pivotPnt);
 	sort(pivotPnt, userCreatedRules.end());
 
-	vector<string> illegallyAllowRules;
-	vector<string> illegallyBlockRules;
+	vector<string> illegalAllowRules;
+	vector<string> illegalBlockRules;
 
 	set_difference(
 		registryBlockRules.begin(),
 		registryBlockRules.end(),
 		userCreatedRules.begin(),
 		pivotPnt,
-		back_inserter(illegallyBlockRules));
+		back_inserter(illegalBlockRules));
 
 	set_difference(
 		registryAllowRules.begin(),
 		registryAllowRules.end(),
 		pivotPnt,
 		userCreatedRules.end(),
-		back_inserter(illegallyAllowRules));
+		back_inserter(illegalAllowRules));
 
-	if (!illegallyBlockRules.empty())
+	if (!illegalBlockRules.empty())
 	{
-		for (const auto &rule : illegallyBlockRules)
+		for (const auto &rule : illegalBlockRules)
 			removeQueue.enqueue(make_pair(rule, SecOption::BLACKLIST));
 	}
 
-	if (!illegallyAllowRules.empty())
+	if (!illegalAllowRules.empty())
 	{
-		for (const auto &rule : illegallyAllowRules)
+		for (const auto &rule : illegalAllowRules)
 			removeQueue.enqueue(make_pair(rule, SecOption::WHITELIST));
 	}
 
@@ -598,7 +598,7 @@ void SecPolicy::CheckRules()
 	for (auto &t : ruleConsumers)
 		t.join();
 
-	if (!illegallyBlockRules.empty() || !illegallyAllowRules.empty())
+	if (!illegalBlockRules.empty() || !illegalAllowRules.empty())
 	{
 		RuleConsumer ruleConsumer(updateRules, tempRuleCreation);
 		ruleConsumer.RemoveRules();
@@ -649,7 +649,7 @@ void SecPolicy::CheckGlobalSettings()
 		{
 			cout << "\nProceed with caution! Unauthorized changes have been made "
 				<< "to the global policy settings."
-				<< "\nCorrect settings were reapplied.";
+				<< "\nCorrect settings were reapplied.\n";
 
 			policySettings.SetDwordValue("AuthenticodeEnabled",
 				static_cast<DWORD>(globalSettings[AUTHENTICODE_ENABLED] - '0'));
@@ -690,6 +690,7 @@ void SecPolicy::CheckGlobalSettings()
 			fs::copy_file(exePath, tempPath);
 			get<SEC_OPTION>(ruleData) = SecOption::WHITELIST;
 			get<FILE_LOCATION>(ruleData) = tempPath;
+			get<ITEM_SIZE>(ruleData) = fs::file_size(tempPath);
 			createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 			HashRule hashRule(false, false);
@@ -705,7 +706,7 @@ void SecPolicy::CheckGlobalSettings()
 	}
 	catch (const RegException &e)
 	{
-		cerr << '\n' << e.what();
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const fs::filesystem_error &e)
 	{
@@ -895,7 +896,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 					ruleConsumers.clear();
 					for (const auto &rule : deletedFiles)
 						removeQueue.enqueue(make_pair(
-							get<FILE_LOCATION>(rule), get<SEC_OPTION>(rule)));
+							get<RULE_GUID>(rule), get<SEC_OPTION>(rule)));
 
 					RuleConsumer ruleConsumer(updateRules, tempRuleCreation);
 					ruleConsumer.RemoveRules();
@@ -914,10 +915,10 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 	}
 	catch (const RegException &e)
 	{
-		cout << e.what() << '\n';
+		cerr << '\n' << e.what() << ". Error code " << e.ErrorCode();
 	}
 	catch (const exception &e)
 	{
-		cout << e.what() << '\n';
+		cerr << e.what() << '\n';
 	}
 }

@@ -5,8 +5,6 @@
 
 #include "include\clara.hpp"
 
-#include <iostream>	
-
 using namespace std;
 using namespace AppSecPolicy;
 
