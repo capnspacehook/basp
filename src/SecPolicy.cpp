@@ -198,6 +198,7 @@ void SecPolicy::TempRun(const string &path)
 			get<SEC_OPTION>(*tempRuleData) = SecOption::WHITELIST;
 			get<RULE_TYPE>(*tempRuleData) = ruleType;
 			get<FILE_LOCATION>(*tempRuleData) = file.string();
+			get<ITEM_SIZE>(*tempRuleData) = size;
 
 			RuleFindResult result = dataFileMan.FindRule(
 				SecOption::BLACKLIST, ruleType, file.string(), *tempRuleData);
@@ -701,7 +702,9 @@ void SecPolicy::CheckGlobalSettings()
 			fs::remove(tempPath);
 
 			cout << "done\n";
+
 			whitelistedBASP = true;
+			ApplyChanges(true);
 		}
 	}
 	catch (const RegException &e)
@@ -853,6 +856,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 			KEY_READ | KEY_WRITE);
 
 		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+		
 		Sleep(1000);
 
 		executableTypes.pop_back();

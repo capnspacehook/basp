@@ -179,10 +179,10 @@ string DataFileManager::GetCurrentPolicySettings() const
 		if (firstTimeRun)
 		{
 			policyKey.SetDwordValue("AuthenticodeEnabled", 0);
-			policyKey.SetDwordValue("DefaultLevel", 0);
+			policyKey.SetDwordValue("DefaultLevel", 262144);
 			policyKey.SetMultiStringValue("ExecutableTypes", executableTypes);
 			policyKey.SetDwordValue("PolicyScope", 0);
-			policyKey.SetDwordValue("TransparentEnabled", 1);
+			policyKey.SetDwordValue("TransparentEnabled", 2);
 		}
 
 		//read in global settings
@@ -269,16 +269,15 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	if (userRulePaths.empty())
 		return result;
 
+	bool exists = false;
 	bool validRule = false;
+	bool subDir = false;
 	SecOption parentOp;
 	bool parentDir = false;
-	bool existingSubdir = false;
-	bool nonExistingSubdir = false;
 	const SecOption findOp = option;
 	const RuleType findType = type;
 	
-	auto foundRule = FindUserRuleHelper(path, parentDir, nonExistingSubdir, existingSubdir,
-		parentOp, validRule);
+	auto foundRule = FindUserRuleHelper(path, exists, subDir, parentDir, parentOp, validRule);
 
 	if (validRule)
 	{
@@ -294,7 +293,7 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 
 		if (option == SecOption::REMOVED)
 		{
-			if (existingSubdir)
+			if (exists && subDir)
 				result = RuleFindResult::RM_SUBDIR;
 
 			else
@@ -303,7 +302,7 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 
 		else if (findOp != option)
 		{
-			if (nonExistingSubdir)
+			if (!exists && subDir)
 			{
 				if (findOp == SecOption::REMOVED)
 					result = RuleFindResult::NO_EXIST_SUBDIR_TO_BE_RM;
@@ -312,7 +311,7 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 					result = RuleFindResult::NO_EXIST_SUBDIR_DIFF_OP;
 			}
 
-			else if (existingSubdir)
+			else if (exists && subDir)
 			{
 				if (findOp == SecOption::REMOVED)
 					result = RuleFindResult::EXIST_SUBDIR_TO_BE_RM;
@@ -326,8 +325,11 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 				if (findOp == SecOption::REMOVED)
 					result = RuleFindResult::PARENT_DIR_TO_BE_RM;
 
+				else if (exists)
+					result = RuleFindResult::EXIST_PARENT_DIR_DIFF_OP;
+
 				else
-					result = RuleFindResult::PARENT_DIR_DIFF_OP;
+					result = RuleFindResult::NO_EXIST_PARENT_DIR_DIFF_OP;
 			}
 
 			else
@@ -342,20 +344,23 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 
 		else
 		{
-			if (nonExistingSubdir)
+			if (!exists && subDir)
 				result = RuleFindResult::NO_EXIST_SUBDIR_SAME_OP;
 
-			else if (existingSubdir)
+			else if (exists && subDir)
 				result = RuleFindResult::EXIST_SUBDIR_SAME_OP;
 
-			else if (parentDir)
-				result = RuleFindResult::PARENT_DIR_SAME_OP;
+			else if (!exists && parentDir)
+				result = RuleFindResult::NO_EXIST_PARENT_DIR_SAME_OP;
+
+			else if (exists && parentDir)
+				result = RuleFindResult::EXIST_PARENT_DIR_SAME_OP;
 
 			else
 				result = RuleFindResult::EXACT_MATCH;
 		}
 
-		if (nonExistingSubdir || existingSubdir)
+		if (subDir)
 		{
 			if (option == SecOption::REMOVED && parentOp != findOp)
 				parentDirDiffOp = true;
@@ -368,17 +373,16 @@ RuleFindResult DataFileManager::FindUserRule(SecOption option, RuleType type,
 	return result;
 }
 
-VecStrViewConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &parentDir,
-	bool &nonExistingSubdir, bool &existingSubdir, SecOption &parentOp,  bool &validRule) const
+VecStrViewConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &exists,
+	bool &subDir, bool &parentDir, SecOption &parentOp,  bool &validRule) const
 {
-	bool exactRule = false;
 	VecStrViewConstIt foundRule;
 
 	const auto exactSearchResult = lower_bound(userRulePaths.begin(), userRulePaths.end(), path);
 
 	if (exactSearchResult != userRulePaths.end() && *exactSearchResult == path)
 	{
-		exactRule = true;
+		exists = true;
 		foundRule = exactSearchResult;
 		validRule = true;
 	}
@@ -392,21 +396,16 @@ VecStrViewConstIt DataFileManager::FindUserRuleHelper(const string &path, bool &
 	if (subDirSearchResult != userRulePaths.end() && !(path < *subDirSearchResult) &&
 		*subDirSearchResult != path && IsSubDir(path, *subDirSearchResult))
 	{
-		if (exactRule)
-		{
-			existingSubdir = true;
+		if (exists)
 			foundRule = exactSearchResult;
-		}
 
 		else
-		{
-			nonExistingSubdir = true;
 			foundRule = subDirSearchResult;
-		}
 
 		parentOp = static_cast<SecOption>(
 			userRuleInfo[distance(userRulePaths.begin(), subDirSearchResult)][SEC_OPTION] - '0');
 
+		subDir = true;
 		validRule = true;
 	}
 
@@ -754,12 +753,18 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 			}
 		}
 
-		else if (result == RuleFindResult::PARENT_DIR_SAME_OP 
-			|| result == RuleFindResult::PARENT_DIR_DIFF_OP)
+		else if (result == RuleFindResult::NO_EXIST_PARENT_DIR_SAME_OP 
+			|| result == RuleFindResult::NO_EXIST_PARENT_DIR_DIFF_OP
+			|| result == RuleFindResult::EXIST_PARENT_DIR_SAME_OP
+			|| result == RuleFindResult::EXIST_PARENT_DIR_DIFF_OP)
 		{
-			userRuleInfo.emplace_back(to_string(static_cast<int>(option))
-				+ '|' + to_string(static_cast<int>(type))
-				+ '|' + location);
+			if (result == RuleFindResult::NO_EXIST_PARENT_DIR_SAME_OP
+				|| result == RuleFindResult::NO_EXIST_PARENT_DIR_DIFF_OP)
+			{
+				userRuleInfo.emplace_back(to_string(static_cast<int>(option))
+					+ '|' + to_string(static_cast<int>(type))
+					+ '|' + location);
+			}
 
 			auto subDirs = FindUserRulesInDir(location);
 
@@ -1149,13 +1154,6 @@ void DataFileManager::SetNewPassword(string &&guessPwd)
 
 		//kdfHash.ProtectMemory(true);
 		//kdfSalt.ProtectMemory(true);
-
-		winreg::RegKey policySettings(
-			HKEY_LOCAL_MACHINE,
-			R"(SOFTWARE\Policies\Microsoft\Windows\Safer\CodeIdentifiers)",
-			KEY_WRITE);
-
-		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
 
 		passwordReset = true;
 

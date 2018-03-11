@@ -52,9 +52,8 @@ namespace AppSecPolicy
 		}
 		std::string GetGlobalSettings()
 		{
-			if (passwordReset)
+			if (firstTimeRun)
 			{
-				passwordReset = false;
 				globalPolicySettings = GetCurrentPolicySettings();
 				return globalPolicySettings;
 			}

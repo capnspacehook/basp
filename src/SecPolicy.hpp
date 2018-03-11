@@ -21,14 +21,14 @@ namespace AppSecPolicy
 		explicit SecPolicy(std::string &&prgmName, std::string &&pwd, bool update, bool lstRules, bool lstAll)
 			: updateRules(update), listRules(lstRules), listAllRules(lstAll), programName(std::move(prgmName)), dataFileMan(programName)
 		{
-			dataFileMan.VerifyPassword(std::forward<std::string>(pwd));
+			dataFileMan.VerifyPassword(std::move(pwd));
 			
 			CheckGlobalSettings();
 			StartTimer();
 		}
 		~SecPolicy()
 		{
-			if (!justListing || whitelistedBASP)
+			if (!justListing)
 			{
 				ApplyChanges(true);
 				const auto diff = std::chrono::high_resolution_clock::now() - startTime;
