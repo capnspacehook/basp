@@ -179,7 +179,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 		if (firstTimeRun)
 		{
 			policyKey.SetDwordValue("AuthenticodeEnabled", 0);
-			policyKey.SetDwordValue("DefaultLevel", 262144);
+			policyKey.SetDwordValue("DefaultLevel", 0);
 			policyKey.SetMultiStringValue("ExecutableTypes", executableTypes);
 			policyKey.SetDwordValue("PolicyScope", 0);
 			policyKey.SetDwordValue("TransparentEnabled", 2);

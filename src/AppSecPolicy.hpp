@@ -24,8 +24,9 @@ namespace AppSecPolicy
 
 	//FileInfo access names
 	const int RULE_PATH = 0;
-	const int EXTENSION = 1;
-	const int DATA_SIZE = 2;
+	const int FILENAME = 1;
+	const int EXTENSION = 2;
+	const int DATA_SIZE = 3;
 
 	//RuleAction access names
 	const int MOD_TYPE = 0;
@@ -57,7 +58,7 @@ namespace AppSecPolicy
 
 	using DirInfo = std::pair<fs::path, uintmax_t>;
 
-	using FileInfo = std::tuple<std::string, std::string, uintmax_t>;
+	using FileInfo = std::tuple<std::string, std::string, std::string, uintmax_t>;
 
 	using RmRuleInfo = std::pair<std::string, SecOption>;
 

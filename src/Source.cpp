@@ -36,6 +36,9 @@ int main(int argc, char *argv[])
 	if (parser.checkRules)
 		secPolicy.CheckRules();
 
+	/*if (parser.defaultPolicy)
+		secPolicy.DefaultPolicy();*/
+
 	if (parser.blacklisting)
 		secPolicy.CreatePolicy(parser.fileArgs, SecOption::BLACKLIST);
 

@@ -17,7 +17,8 @@ namespace AppSecPolicy
 		{
 			fs::path dir;
 			DirInfo dirInfo;
-			std::string fileName;
+			std::string filePath;
+			std::string filename;
 			std::string extension;
 			
 			const moodycamel::ProducerToken dirPtok(SecPolicy::dirItQueue);
@@ -45,16 +46,20 @@ namespace AppSecPolicy
 
 								if (!extension.empty())
 								{
-									fileName = currFile.path().string();
-									std::transform(fileName.begin(), fileName.end(),
-										fileName.begin(), tolower);
+									filePath = currFile.path().string();
+									std::transform(filePath.begin(), filePath.end(),
+										filePath.begin(), tolower);
+
+									filename = currFile.path().filename().string();
+									std::transform(filename.begin(), filename.end(),
+										filename.begin(), tolower);
 
 									extension = extension.substr(1, extension.length());
 									std::transform(extension.begin(), extension.end(),
 										extension.begin(), toupper);
 
 									SecPolicy::fileCheckQueue.enqueue(fileCheckPtok,
-										std::make_tuple(fileName, extension, fileSize));
+										std::make_tuple(filePath, filename, extension, fileSize));
 								}
 							}
 						}
@@ -73,16 +78,20 @@ namespace AppSecPolicy
 
 				if (!extension.empty())
 				{
-					std::string fileName = file.string();
-					std::transform(fileName.begin(), fileName.end(),
-						fileName.begin(), tolower);
+					std::string filePath = file.string();
+					std::transform(filePath.begin(), filePath.end(),
+						filePath.begin(), tolower);
+
+					std::string filename = file.filename().string();
+					std::transform(filename.begin(), filename.end(),
+						filename.begin(), tolower);
 
 					extension = extension.substr(1, extension.length());
 					std::transform(extension.begin(), extension.end(),
 						extension.begin(), toupper);
 
 					SecPolicy::fileCheckQueue.enqueue(
-						std::make_tuple(fileName, extension, fileSize));
+						std::make_tuple(filePath, filename, extension, fileSize));
 				}
 			}
 

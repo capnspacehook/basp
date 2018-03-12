@@ -45,6 +45,7 @@ namespace AppSecPolicy
 
 		void CreatePolicy(const std::vector<std::string> &paths,
 			const SecOption &op, RuleType = RuleType::HASHRULE);
+		void DefaultPolicy();
 		void TempRun(const std::string &path);
 		void TempRun(const std::string &dir, const std::string &exeFile);
 		void UpdateRules(const std::vector<std::string>&);
@@ -102,10 +103,19 @@ namespace AppSecPolicy
 		RuleType ruleType;
 
 		std::vector<std::string> executableTypes;
+		std::vector<std::string> bypassFiles = { "atbroker.exe", "bginfo.exe",
+			"cdb.exe", "cmstp.exe", "csi.exe", "dfsvc.exe", "dnx.exe", "forfiles.exe",
+			"fsi.exe", "ieexec.exe", "infdefaultinstall.exe", "installutil.exe",
+			"mavinject32.exe", "msbuild.exe", "msdt.exe", "mshta.exe", "msiexec.exe",
+			"msxsl.exe", "odbcconf.exe", "presentationhost.exe", "pubprn.vbs",
+			"rcsi.exe", "regasm.exe", "regsvcs.exe", "regsvr32.exe", "rundll32.exe",
+			"runscripthelper.exe", "slmgr.vbs", "syncappvpublishingserver.exe", "te.exe",
+			"tracker.exe" "winrm.vbs", "winword.exe", "wmic.exe", "xwizard.exe", };
 
 		bool justListing = true;
 		bool whitelistedBASP = false;
 		bool creatingSingleRule = false;
+		bool creatingDefaultPolicy = false;
 		std::vector<std::thread> ruleProducers;
 		std::vector<std::thread> ruleConsumers;
 		const unsigned maxThreads = std::thread::hardware_concurrency();

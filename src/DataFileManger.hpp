@@ -62,12 +62,6 @@ namespace AppSecPolicy
 				return globalPolicySettings;
 		}
 		std::string GetCurrentPolicySettings() const;
-		std::string GetRuleList()
-		{
-			std::string ruleList = policyData;
-			//policyData.ProtectMemory(true);
-			return ruleList;
-		}
 		std::vector<std::string> GetRuleInfo() const
 		{
 			return ruleInfo;
@@ -105,7 +99,7 @@ namespace AppSecPolicy
 		std::optional<std::pair<VecStrConstIt, VecStrConstIt>> FindUserRulesInDir(const std::string&) const;
 		void SortRules();
 		
-		const unsigned iterations = 1000;	//iterations for PBKDF2
+		const unsigned iterations = 1000;				//iterations for PBKDF2
 		const unsigned TAG_SIZE = AES::BLOCKSIZE;
 		const unsigned KEY_SIZE = AES::MAX_KEYLENGTH;
 		SecByteBlock kdfSalt;
