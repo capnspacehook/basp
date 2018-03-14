@@ -48,7 +48,7 @@ void HashRule::CreateNewHashRule(RuleDataPtr &ruleData)
 	get<ITEM_SIZE>(*ruleData) = itemSize;
 	get<LAST_MODIFIED>(*ruleData) = lastModified;
 	get<ITEM_DATA>(*ruleData) = move(itemData);
-	get<SHA256_HASH>(*ruleData) = move(sha256Hash);
+	//get<SHA256_HASH>(*ruleData) = move(sha256Hash);
 
 	SecPolicy::createdRules++;
 }
@@ -71,7 +71,7 @@ void HashRule::SwitchRule(const uintmax_t &fileSize, RuleDataPtr &ruleData)
 			friendlyName = get<FRIENDLY_NAME>(*ruleData);
 			itemSize = get<ITEM_SIZE>(*ruleData);
 			itemData = get<ITEM_DATA>(*ruleData);
-			sha256Hash = get<SHA256_HASH>(*ruleData);
+			//sha256Hash = get<SHA256_HASH>(*ruleData);
 
 			if (tempRuleCreation)
 				lastModified = get<LAST_MODIFIED>(*ruleData);
@@ -116,7 +116,7 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 			return;
 		}
 	
-		tempKey.DeleteKey(ruleGuid + R"(\SHA256)", KEY_WOW64_32KEY);
+		//tempKey.DeleteKey(ruleGuid + R"(\SHA256)", KEY_WOW64_32KEY);
 		tempKey.DeleteKey(ruleGuid, KEY_WOW64_32KEY);
 
 		SecPolicy::removedRules++;
@@ -143,7 +143,7 @@ bool HashRule::CheckIfRuleOutdated(const uintmax_t &fileSize,
 	else
 	{
 		HashDigests(get<FILE_LOCATION>(*ruleData));
-		if (sha256Hash != get<SHA256_HASH>(*ruleData))
+		if (itemData != get<ITEM_DATA>(*ruleData))
 			fileChanged = true;
 
 		fileHashed = true;
@@ -183,7 +183,7 @@ void HashRule::UpdateRule(const uintmax_t &fileSize, RuleData &ruleData, bool fi
 	get<ITEM_SIZE>(ruleData) = itemSize;
 	get<LAST_MODIFIED>(ruleData) = lastModified;
 	get<ITEM_DATA>(ruleData) = move(itemData);
-	get<SHA256_HASH>(ruleData) = move(sha256Hash);
+	//get<SHA256_HASH>(ruleData) = move(sha256Hash);
 	get<MOD_STATUS>(ruleData) = ModificationType::UPDATED;
 
 	SecPolicy::updatedRules++;
@@ -224,13 +224,13 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 			hashRuleKey.SetDwordValue("SaferFlags", 0);	//not used
 
 			hashRuleKey.Close();
-			hashRuleKey.Create(
+			/*hashRuleKey.Create(
 				HKEY_LOCAL_MACHINE,
 				policyPath + "\\SHA256",
 				KEY_READ | KEY_WRITE);
 
 			hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);
-			hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));
+			hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));*/
 
 			ruleDeleted = true;
 		}
@@ -270,7 +270,7 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 	
 		hashRuleKey.Close();
 		
-		if (!hashRuleKey.Open(HKEY_LOCAL_MACHINE, policyPath + R"(\SHA256)", KEY_READ | KEY_WRITE))
+		/*if (!hashRuleKey.Open(HKEY_LOCAL_MACHINE, policyPath + R"(\SHA256)", KEY_READ | KEY_WRITE))
 		{
 			hashRuleKey.Create(
 				HKEY_LOCAL_MACHINE,
@@ -296,7 +296,7 @@ void HashRule::CheckRuleIntegrity(const RuleData &ruleData)
 				ruleModified = true;
 				hashRuleKey.SetBinaryValue("ItemData", get<SHA256_HASH>(ruleData));
 			}
-		}
+		}*/
 
 		if (ruleModified)
 		{
@@ -467,13 +467,13 @@ void HashRule::HashDigests(const string_view &fileName)
 		fileName.data(), true, new HashFilter(
 			md5Hash, new HexEncoder(new StringSink(md5Digest))));
 
-	FileSource(
+	/*FileSource(
 		fileName.data(), true, new HashFilter(
-			shaHash, new HexEncoder(new StringSink(shaDigest))));
+			shaHash, new HexEncoder(new StringSink(shaDigest))));*/
 
 	//convert string to format that can be loaded into registry
 	itemData = convertStrToByte(md5Digest);
-	sha256Hash = convertStrToByte(shaDigest);
+	//sha256Hash = convertStrToByte(shaDigest);
 }
 
 //converts string of hex into bytes
@@ -562,13 +562,13 @@ void HashRule::WriteToRegistry(const string_view &fileName, SecOption policy)
 		hashRuleKey.SetDwordValue("SaferFlags", 0);	//not used
 
 		hashRuleKey.Close();
-		hashRuleKey.Create(
+		/*hashRuleKey.Create(
 			HKEY_LOCAL_MACHINE,
 			policyPath + "\\SHA256",
 			KEY_WRITE);
 
 		hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);
-		hashRuleKey.SetBinaryValue("ItemData", sha256Hash);
+		hashRuleKey.SetBinaryValue("ItemData", sha256Hash);*/
 	}
 	catch (const RegException &e)
 	{

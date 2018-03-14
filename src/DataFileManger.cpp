@@ -183,6 +183,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 			policyKey.SetMultiStringValue("ExecutableTypes", executableTypes);
 			policyKey.SetDwordValue("PolicyScope", 0);
 			policyKey.SetDwordValue("TransparentEnabled", 2);
+			policyKey.SetStringValue("LogFileName", R"(C:\Windows\System32\config\SECURITY1.LOG)");
 		}
 
 		//read in global settings
@@ -962,7 +963,7 @@ void DataFileManager::WriteChanges()
 
 void DataFileManager::VerifyPassword(string &&guessPwd)
 {
-	if (fs::exists(policyFileName.c_str()))
+	if (CheckIfRunBefore())
 		CheckPassword(move(guessPwd));
 
 	else

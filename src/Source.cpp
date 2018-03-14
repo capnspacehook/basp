@@ -30,14 +30,17 @@ int main(int argc, char *argv[])
 	SecPolicy secPolicy(move(parser.programName), move(parser.password), parser.updatingRules, 
 		parser.listRules, parser.listAllRules);
 
+	if (parser.showHelp)
+		parser.ShowHelp();
+
 	if (parser.changePassword)
 		secPolicy.ChangePassword();
 
 	if (parser.checkRules)
 		secPolicy.CheckRules();
 
-	/*if (parser.defaultPolicy)
-		secPolicy.DefaultPolicy();*/
+	if (parser.defaultPolicy)
+		secPolicy.DefaultPolicy();
 
 	if (parser.blacklisting)
 		secPolicy.CreatePolicy(parser.fileArgs, SecOption::BLACKLIST);

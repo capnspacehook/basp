@@ -51,6 +51,6 @@ namespace AppSecPolicy
 		uintmax_t itemSize;
 		uintmax_t lastModified;
 		static constexpr int shaHashAlg = 32780;
-		std::vector<BYTE> sha256Hash;
+		//std::vector<BYTE> sha256Hash;
 	};
 }

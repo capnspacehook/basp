@@ -20,27 +20,7 @@ namespace AppSecPolicy
 
 			if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules 
 				|| !tempAllowFile.empty() || !tempAllowDir.empty() || checkRules || changePassword || defaultPolicy))
-			{
-				std::cout << R"(
-	     ___          ___          ___                  
-	    /  /\        /  /\        /  /\         ___     
-	   /  /::\      /  /::\      /  /::\       /  /\    
-	  /  /:/\:\    /  /:/\:\    /__/:/\:\     /  /::\   
-	 /  /::\ \:\  /  /::\ \:\  _\_ \:\ \:\   /  /:/\:\  
-	/__/:/\:\_\:|/__/:/\:\_\:\/__/\ \:\ \:\ /  /::\ \:\ 
-	\  \:\ \:\/:/\__\/  \:\/:/\  \:\ \:\_\//__/:/\:\_\:\
-	 \  \:\_\::/      \__\::/  \  \:\_\:\  \__\/  \:\/:/
-	  \  \:\/:/       /  /:/    \  \:\/:/       \  \::/ 
-	   \__\::/       /__/:/      \  \::/         \__\/  
-	                 \__\/        \__\/                 )" << "\n\n";
-
-				std::cout << "Better Application Security Policy\n"
-					<< "https://github.com/capnspacehook/Better-Application-Security-Policy\n\n"
-					<< parser << '\n'
-					<< "Created by Andrew LeFevre";
-
-				std::exit(-1);
-			}
+			
 
 			if ((whitelisting || blacklisting || removingRules || updatingRules) && fileArgs.empty())
 				PrintError("No files or dirs entered");
@@ -125,6 +105,29 @@ namespace AppSecPolicy
 				PrintError("File arguments conflict; Please enter files/dirs that do not contain other files/dirs entered");
 		}
 
+		inline void ShowHelp() const
+		{
+			std::cout << R"(
+	     ___          ___          ___                  
+	    /  /\        /  /\        /  /\         ___     
+	   /  /::\      /  /::\      /  /::\       /  /\    
+	  /  /:/\:\    /  /:/\:\    /__/:/\:\     /  /::\   
+	 /  /::\ \:\  /  /::\ \:\  _\_ \:\ \:\   /  /:/\:\  
+	/__/:/\:\_\:|/__/:/\:\_\:\/__/\ \:\ \:\ /  /::\ \:\ 
+	\  \:\ \:\/:/\__\/  \:\/:/\  \:\ \:\_\//__/:/\:\_\:\
+	 \  \:\_\::/      \__\::/  \  \:\_\:\  \__\/  \:\/:/
+	  \  \:\/:/       /  /:/    \  \:\/:/       \  \::/ 
+	   \__\::/       /__/:/      \  \::/         \__\/  
+	                 \__\/        \__\/                 )" << "\n\n";
+
+			std::cout << "Better Application Security Policy\n"
+				/*<< "https://github.com/capnspacehook/Better-Application-Security-Policy\n\n"*/
+				<< parser << '\n'
+				<< "Created by Andrew LeFevre";
+
+			std::exit(-1);
+		}
+
 		std::string programName;
 		bool showHelp = false;
 		bool listRules = false;
@@ -146,19 +149,19 @@ namespace AppSecPolicy
 		std::vector<std::string> fileArgs;
 
 	private:
-		void ToLower(std::string& fileName) noexcept
+		void ToLower(std::string& fileName) const noexcept
 		{
 			for (auto &letter : fileName)
 				letter = std::move(tolower(letter));
 		}
-		inline void PrintError(std::string error)
+		inline void PrintError(std::string error) const
 		{
 			
 			std::cout << "Command line error: " << error << "\n\n";
 
 			std::exit(-1);
 		}
-		bool CheckFileConflicts(std::vector<std::string> &files)
+		bool CheckFileConflicts(std::vector<std::string> &files) const
 		{
 			bool fileConflicts = false;
 			std::vector<fs::path> paths;
