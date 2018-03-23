@@ -8,6 +8,7 @@
 
 using CryptoPP::AES;
 using CryptoPP::SecByteBlock;
+
 using namespace Protected_Ptr;
 using namespace AppSecPolicy;
 namespace fs = std::experimental::filesystem;
@@ -50,9 +51,8 @@ namespace AppSecPolicy
 		}
 		std::string GetGlobalSettings()
 		{
-			if (passwordReset)
+			if (firstTimeRun)
 			{
-				passwordReset = false;
 				globalPolicySettings = GetCurrentPolicySettings();
 				return globalPolicySettings;
 			}
@@ -61,12 +61,6 @@ namespace AppSecPolicy
 				return globalPolicySettings;
 		}
 		std::string GetCurrentPolicySettings() const;
-		std::string GetRuleList()
-		{
-			std::string ruleList = *policyData;
-			policyData.ProtectMemory(true);
-			return ruleList;
-		}
 		std::vector<std::string> GetRuleInfo() const
 		{
 			return ruleInfo;
@@ -104,7 +98,7 @@ namespace AppSecPolicy
 		std::optional<std::pair<VecStrConstIt, VecStrConstIt>> FindUserRulesInDir(const std::string&) const;
 		void SortRules();
 		
-		const unsigned iterations = 1000;	//iterations for PBKDF2
+		const unsigned iterations = 100000;				//iterations for PBKDF2
 		const unsigned TAG_SIZE = AES::BLOCKSIZE;
 		const unsigned KEY_SIZE = AES::MAX_KEYLENGTH;
 		ProtectedPtr<SecByteBlock, SecByteBlockSerializer> kdfSalt;

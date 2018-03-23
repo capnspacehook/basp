@@ -179,6 +179,14 @@ void SecPolicy::CreatePolicy(const vector<string> &paths, const SecOption &op,
 	}
 }
 
+void SecPolicy::DefaultPolicy()
+{
+	justListing = false;
+	creatingDefaultPolicy = true;
+
+	CreatePolicy({ R"(c:\windows)" }, SecOption::WHITELIST);
+}
+
 //create a whitelisting rule, execute the file passed in, and delete the rule
 void SecPolicy::TempRun(const string &path)
 {
@@ -198,6 +206,7 @@ void SecPolicy::TempRun(const string &path)
 			get<SEC_OPTION>(*tempRuleData) = SecOption::WHITELIST;
 			get<RULE_TYPE>(*tempRuleData) = ruleType;
 			get<FILE_LOCATION>(*tempRuleData) = file.string();
+			get<ITEM_SIZE>(*tempRuleData) = size;
 
 			RuleFindResult result = dataFileMan.FindRule(
 				SecOption::BLACKLIST, ruleType, file.string(), *tempRuleData);
@@ -502,29 +511,19 @@ void SecPolicy::CheckRules()
 		return;
 	}
 
-	string temp;
-	istringstream ruleStrings(dataFileMan.GetRuleList());
+	auto rules = dataFileMan.GetRuleInfo();
 
-	getline(ruleStrings, temp);
-	getline(ruleStrings, temp);
-	getline(ruleStrings, temp);
+	for (auto &rule : rules)
+		ruleStringQueue.enqueue(move(rule));
 
-	while (temp.back() == '*' || temp.back() == '#')
-		getline(ruleStrings, temp);
-
-	ruleStringQueue.enqueue(move(temp));
-
-	while (getline(ruleStrings, temp))
-		ruleStringQueue.enqueue(move(temp));
-
-	for (unsigned i = 0; i < initThreadCnt; i++)
+	for (unsigned i = 0; i < initThreadCnt / 2; i++)
 	{
 		ruleProducers.emplace_back(
 			&RuleProducer::ConvertRules,
 			RuleProducer());
 	}
 
-	for (unsigned i = 0; i < initThreadCnt; i++)
+	for (unsigned i = 0; i < initThreadCnt / 2; i++)
 	{
 		ruleConsumers.emplace_back(
 			&RuleConsumer::CheckRules,
@@ -556,7 +555,7 @@ void SecPolicy::CheckRules()
 
 	for (auto &rule : userCreatedRules)
 	{
-		auto guidBegin = rule.find("|{") + 1;
+		const auto guidBegin = rule.find("|{") + 1;
 		rule = rule.substr(guidBegin, rule.find("}|") - guidBegin + 1);
 	}
 
@@ -608,7 +607,7 @@ void SecPolicy::CheckRules()
 		cout << "\nFinished checking rules. All rules are correct\n";
 
 	else
-		cout << "\nFinished checking rules. Changed rules are now corrected\n";
+		cout << "\n\nFinished checking rules. Changed rules are now corrected\n";
 }
 
 //displays created rules
@@ -701,7 +700,9 @@ void SecPolicy::CheckGlobalSettings()
 			fs::remove(tempPath);
 
 			cout << "done\n";
+
 			whitelistedBASP = true;
+			ApplyChanges(true);
 		}
 	}
 	catch (const RegException &e)
@@ -723,8 +724,9 @@ void SecPolicy::ProcessRules()
 {
 	try
 	{
-		string file;
 		bool filesLeft;
+		string filePath;
+		string filename;
 		FileInfo fileInfo;
 		string extension;
 		RuleData ruleData;
@@ -737,7 +739,8 @@ void SecPolicy::ProcessRules()
 			while (fileCheckQueue.try_dequeue(ruleCtok, fileInfo))
 			{
 				filesLeft = true;
-				file = move(get<RULE_PATH>(fileInfo));
+				filePath = move(get<RULE_PATH>(fileInfo));
+				filename = move(get<FILENAME>(fileInfo));
 				extension = move(get<EXTENSION>(fileInfo));
 				fileSize = get<DATA_SIZE>(fileInfo);
 
@@ -746,12 +749,21 @@ void SecPolicy::ProcessRules()
 					executableTypes.cend(), extension))
 				{
 					const RuleFindResult result = dataFileMan.FindRule(
-						secOption, ruleType, file, ruleData);
+						secOption, ruleType, filePath, ruleData);
 
 					if (result == RuleFindResult::NO_MATCH)
 					{
-						get<SEC_OPTION>(ruleData) = secOption;
-						get<FILE_LOCATION>(ruleData) = file;
+						if (creatingDefaultPolicy && binary_search(
+							bypassFiles.cbegin(), bypassFiles.cend(), filename))
+						{
+							enteredRules.emplace_back(SecOption::BLACKLIST, ruleType, filePath);
+							get<SEC_OPTION>(ruleData) = SecOption::BLACKLIST;
+						}
+
+						else
+							get<SEC_OPTION>(ruleData) = secOption;
+
+						get<FILE_LOCATION>(ruleData) = filePath;
 						get<ITEM_SIZE>(ruleData) = fileSize;
 						createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
@@ -853,6 +865,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 			KEY_READ | KEY_WRITE);
 
 		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
+		
 		Sleep(1000);
 
 		executableTypes.pop_back();

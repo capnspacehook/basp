@@ -65,7 +65,7 @@ void HashRule::SwitchRule(const uintmax_t &fileSize, RuleDataPtr &ruleData)
 		guid = get<RULE_GUID>(*ruleData);
 		get<SEC_OPTION>(*ruleData) = swappedOp;
 
-		if (!CheckIfRuleOutdated(fileSize, ruleData, false))
+		if (!updateRules || !CheckIfRuleOutdated(fileSize, ruleData, false))
 		{
 			string fileName = get<FILE_LOCATION>(*ruleData);
 			friendlyName = get<FRIENDLY_NAME>(*ruleData);
@@ -134,9 +134,6 @@ void HashRule::RemoveRule(const string &ruleGuid, SecOption policy) const
 bool HashRule::CheckIfRuleOutdated(const uintmax_t &fileSize, 
 	RuleDataPtr& ruleData, bool updatingRule)
 {
-	if (!updateRules)
-		return false;
-
 	bool fileHashed = false;
 	bool fileChanged = false;
 	

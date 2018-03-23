@@ -21,14 +21,14 @@ namespace AppSecPolicy
 		explicit SecPolicy(std::string &&prgmName, std::string &&pwd, bool update, bool lstRules, bool lstAll)
 			: updateRules(update), listRules(lstRules), listAllRules(lstAll), programName(std::move(prgmName)), dataFileMan(programName)
 		{
-			dataFileMan.VerifyPassword(std::forward<std::string>(pwd));
+			dataFileMan.VerifyPassword(std::move(pwd));
 			
 			CheckGlobalSettings();
 			StartTimer();
 		}
 		~SecPolicy()
 		{
-			if (!justListing || whitelistedBASP)
+			if (!justListing)
 			{
 				ApplyChanges(true);
 				const auto diff = std::chrono::high_resolution_clock::now() - startTime;
@@ -45,6 +45,7 @@ namespace AppSecPolicy
 
 		void CreatePolicy(const std::vector<std::string> &paths,
 			const SecOption &op, RuleType = RuleType::HASHRULE);
+		void DefaultPolicy();
 		void TempRun(const std::string &path);
 		void TempRun(const std::string &dir, const std::string &exeFile);
 		void UpdateRules(const std::vector<std::string>&);
@@ -103,9 +104,33 @@ namespace AppSecPolicy
 
 		std::vector<std::string> executableTypes;
 
+		std::vector<std::string> scriptingDeps = { "cscript.exe", "dispex.dll", 
+			"jscript.dll", "scrobj.dll", "scrrun.dll", "vbscript.dll", "wcscript.exe", 
+			"wdispex.dll", "wjscript.dll", "wmsscript.ocx", "wscript.exe", "wscrobj.dll", 
+			"wscrrun.dll", "wshcon.dll", "wshext.dll", "wshom.ocx", "wvbscript.dll", 
+			"wwscript.exe", "wwshcon.dll", "wwshext.dll", "wwshom.ocx" };
+			
+		std::vector<std::string> bypassFiles = { "addinprocess.exe", "addinprocess32.exe",
+			"addinutil.exe", "bash.exe", "bginfo.exe", "cdb.exe", "csi.exe", "dbghost.exe",
+			"dbgsvc.exe", "dnx.exe", "fsi.exe", "fsiAnyCpu.exe", "kd.exe", "ntkd.exe",
+			"lxssmanager.dll", "msbuild.exe", "mshta.exe", "ntsd.exe", "pubprn.vbs",
+			"rcsi.exe", "slmgr.vbs", "system.management.automation.dll", "te.exe",
+			"windbg.exe", "winrm.vbs", "wmic.exe" };
+
+		//Full List
+		/*"atbroker.exe", "bginfo.exe",
+		"cdb.exe", "cmstp.exe", "csi.exe", "dfsvc.exe", "dnx.exe", "forfiles.exe",
+		"fsi.exe", "ieexec.exe", "infdefaultinstall.exe", "installutil.exe",
+		"mavinject32.exe", "msbuild.exe", "msdt.exe", "mshta.exe", "msiexec.exe",
+		"msxsl.exe", "odbcconf.exe", "presentationhost.exe", "pubprn.vbs",
+		"rcsi.exe", "regasm.exe", "regsvcs.exe", "regsvr32.exe", "rundll32.exe",
+		"runscripthelper.exe", "slmgr.vbs", "syncappvpublishingserver.exe", "te.exe",
+		"tracker.exe" "winrm.vbs", "winword.exe", "wmic.exe", "xwizard.exe"*/ 
+
 		bool justListing = true;
 		bool whitelistedBASP = false;
 		bool creatingSingleRule = false;
+		bool creatingDefaultPolicy = false;
 		std::vector<std::thread> ruleProducers;
 		std::vector<std::thread> ruleConsumers;
 		const unsigned maxThreads = std::thread::hardware_concurrency();

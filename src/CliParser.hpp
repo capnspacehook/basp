@@ -18,28 +18,9 @@ namespace AppSecPolicy
 			if (!result)
 				PrintError(result.errorMessage().c_str());
 
-			if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules || !tempAllowFile.empty() || !tempAllowDir.empty() || checkRules || changePassword))
-			{
-				std::cout << R"(
-	     ___          ___          ___                  
-	    /  /\        /  /\        /  /\         ___     
-	   /  /::\      /  /::\      /  /::\       /  /\    
-	  /  /:/\:\    /  /:/\:\    /__/:/\:\     /  /::\   
-	 /  /::\ \:\  /  /::\ \:\  _\_ \:\ \:\   /  /:/\:\  
-	/__/:/\:\_\:|/__/:/\:\_\:\/__/\ \:\ \:\ /  /::\ \:\ 
-	\  \:\ \:\/:/\__\/  \:\/:/\  \:\ \:\_\//__/:/\:\_\:\
-	 \  \:\_\::/      \__\::/  \  \:\_\:\  \__\/  \:\/:/
-	  \  \:\/:/       /  /:/    \  \:\/:/       \  \::/ 
-	   \__\::/       /__/:/      \  \::/         \__\/  
-	                 \__\/        \__\/                 )" << "\n\n";
-
-				std::cout << "Better Application Security Policy\n"
-					<< "https://github.com/capnspacehook/Better-Application-Security-Policy\n\n"
-					<< parser << '\n'
-					<< "Created by Andrew LeFevre";
-
-				std::exit(-1);
-			}
+			if (showHelp || !(blacklisting || whitelisting || updatingRules || removingRules || listRules || listAllRules 
+				|| !tempAllowFile.empty() || !tempAllowDir.empty() || checkRules || changePassword || defaultPolicy))
+			
 
 			if ((whitelisting || blacklisting || removingRules || updatingRules) && fileArgs.empty())
 				PrintError("No files or dirs entered");
@@ -47,10 +28,22 @@ namespace AppSecPolicy
 			if (listAllRules && !listRules)
 				PrintError("'-a' option requires '-l'");
 
+			if (!tempAllowFile.empty() && !tempAllowDir.empty())
+				PrintError("'-t' and '-d' cannot be used with '--temp-allow-dir' and '--temp-execute-file'");
+
+			if ((whitelisting && blacklisting) || (whitelisting && removingRules) || (blacklisting && removingRules))
+				PrintError("Options '-w', '-b', and '-r' are mutually exclusive");
+
+			if (removingRules && updatingRules)
+				PrintError("'-u' cannot be used with 'r'");
+
+			if (executeAsAdmin && !(tempAllowFile.empty() || tempAllowDir.empty() || tempAllowExe.empty()))
+				PrintError("'--admin' is only valid when used with '-t' or '--temp-allow-dir' and '--temp-execute-file'");
+
 			if (!tempAllowFile.empty())
 			{
 				if (!fs::exists(tempAllowFile))
-					PrintError("File entered for '-t' is not valid");
+					PrintError(tempAllowFile + "does not exist");
 
 				else if (!fs::is_regular_file(tempAllowFile))
 					PrintError("An executable file must be entered for '-t' option");
@@ -64,7 +57,7 @@ namespace AppSecPolicy
 					PrintError("'--temp-allow-dir' option requires '--temp-execute-file' option");
 
 				else if (!fs::exists(tempAllowDir))
-					PrintError("File entered for '--temp-allow-dir' is not valid");
+					PrintError(tempAllowDir + " does not exist");
 
 				else if (!fs::is_directory(tempAllowDir))
 					PrintError("A directory must be entered for '--temp-allow-dir'");
@@ -78,7 +71,7 @@ namespace AppSecPolicy
 					PrintError("'--temp-execute-file' option requires '--temp-allow-dir' option");
 
 				else if (!fs::exists(tempAllowExe))
-					PrintError("File entered for '--temp-execute-file' is not valid");
+					PrintError(tempAllowExe + " does not exist");
 
 				else if (!fs::is_regular_file(tempAllowExe))
 					PrintError("An executable file must be entered for '--temp-execute-file' option");
@@ -94,20 +87,8 @@ namespace AppSecPolicy
 				parentDir = fs::path(tempAllowFile).parent_path().string();
 
 				if (!fs::exists(parentDir))
-					PrintError("Parent directory of file entered for '-d' is not valid");
+					PrintError(parentDir + " does not exist");
 			}
-
-			if (!tempAllowFile.empty() && !tempAllowDir.empty())
-				PrintError("'-t' and '-d' cannot be used with '--temp-allow-dir' and '--temp-execute-file'");
-
-			if ((whitelisting && blacklisting) || (whitelisting && removingRules) || (blacklisting && removingRules))
-				PrintError("Options '-w', '-b', and '-r' are mutually exclusive");
-
-			if (removingRules && updatingRules)
-				PrintError("'-u' cannot be used with 'r'");
-
-			if (executeAsAdmin && !(tempAllowFile.empty() || tempAllowDir.empty() || tempAllowExe.empty()))
-				PrintError("'--admin' is only valid when used with '-t' or '--temp-allow-dir' and '--temp-execute-file'");
 
 			for (auto &file : fileArgs)
 			{
@@ -115,13 +96,36 @@ namespace AppSecPolicy
 					file.pop_back();
 
 				if (!fs::exists(file))
-					PrintError("File(s) entered are not valid");
+					PrintError(file + " does not exist");
 				
 				ToLower(file);
 			}
 
 			if (CheckFileConflicts(fileArgs))
 				PrintError("File arguments conflict; Please enter files/dirs that do not contain other files/dirs entered");
+		}
+
+		inline void ShowHelp() const
+		{
+			std::cout << R"(
+	     ___          ___          ___                  
+	    /  /\        /  /\        /  /\         ___     
+	   /  /::\      /  /::\      /  /::\       /  /\    
+	  /  /:/\:\    /  /:/\:\    /__/:/\:\     /  /::\   
+	 /  /::\ \:\  /  /::\ \:\  _\_ \:\ \:\   /  /:/\:\  
+	/__/:/\:\_\:|/__/:/\:\_\:\/__/\ \:\ \:\ /  /::\ \:\ 
+	\  \:\ \:\/:/\__\/  \:\/:/\  \:\ \:\_\//__/:/\:\_\:\
+	 \  \:\_\::/      \__\::/  \  \:\_\:\  \__\/  \:\/:/
+	  \  \:\/:/       /  /:/    \  \:\/:/       \  \::/ 
+	   \__\::/       /__/:/      \  \::/         \__\/  
+	                 \__\/        \__\/                 )" << "\n\n";
+
+			std::cout << "Better Application Security Policy\n"
+				/*<< "https://github.com/capnspacehook/Better-Application-Security-Policy\n\n"*/
+				<< parser << '\n'
+				<< "Created by Andrew LeFevre";
+
+			std::exit(-1);
 		}
 
 		std::string programName;
@@ -132,6 +136,7 @@ namespace AppSecPolicy
 		bool blacklisting = false;
 		bool updatingRules = false;
 		bool removingRules = false;
+		bool defaultPolicy = false;
 		std::string tempAllowFile;
 		std::string tempAllowDir;
 		std::string tempAllowExe;
@@ -144,19 +149,19 @@ namespace AppSecPolicy
 		std::vector<std::string> fileArgs;
 
 	private:
-		void ToLower(std::string& fileName) noexcept
+		void ToLower(std::string& fileName) const noexcept
 		{
 			for (auto &letter : fileName)
 				letter = std::move(tolower(letter));
 		}
-		inline void PrintError(const char* error)
+		inline void PrintError(std::string error) const
 		{
 			
 			std::cout << "Command line error: " << error << "\n\n";
 
 			std::exit(-1);
 		}
-		bool CheckFileConflicts(std::vector<std::string> &files)
+		bool CheckFileConflicts(std::vector<std::string> &files) const
 		{
 			bool fileConflicts = false;
 			std::vector<fs::path> paths;
@@ -168,7 +173,7 @@ namespace AppSecPolicy
 				{ return p1.string().length() < p2.string().length(); });
 
 			fs::path temp;
-			for (int i = 1; i < paths.size() && fileConflicts; i++)
+			for (unsigned i = 1; i < paths.size() && fileConflicts; ++i)
 			{
 				temp = paths[i];
 				while (paths[i].root_path() != temp.parent_path())
@@ -226,6 +231,9 @@ namespace AppSecPolicy
 			| clara::detail::Opt(listAllRules)
 			["-a"]["--list-all"]
 			("Requires '-l'. Displays every created rule individually")
+			| clara::detail::Opt(defaultPolicy)
+			["--default-policy"]
+			("Whitelists C:\\Windows, but blocks unneeded files that can be used to bypass the security policy")
 			| clara::detail::Opt(password, "password")
 			["--password"]
 			("Attempts to unlock BASP with password")

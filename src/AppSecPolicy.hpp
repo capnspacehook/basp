@@ -24,8 +24,9 @@ namespace AppSecPolicy
 
 	//FileInfo access names
 	const int RULE_PATH = 0;
-	const int EXTENSION = 1;
-	const int DATA_SIZE = 2;
+	const int FILENAME = 1;
+	const int EXTENSION = 2;
+	const int DATA_SIZE = 3;
 
 	//RuleAction access names
 	const int MOD_TYPE = 0;
@@ -44,8 +45,9 @@ namespace AppSecPolicy
 		DIFF_OP_AND_TYPE,  EXIST_SUBDIR_SAME_OP, EXIST_SUBDIR_DIFF_OP, 
 		EXIST_SUBDIR_TO_BE_RM, NO_EXIST_SUBDIR_SAME_OP, 
 		NO_EXIST_SUBDIR_DIFF_OP, NO_EXIST_SUBDIR_TO_BE_RM,
-		PARENT_DIR_SAME_OP, PARENT_DIR_DIFF_OP, PARENT_DIR_TO_BE_RM,
-		RM_SUBDIR, REMOVED, NO_MATCH };
+		EXIST_PARENT_DIR_SAME_OP, EXIST_PARENT_DIR_DIFF_OP, 
+		NO_EXIST_PARENT_DIR_SAME_OP, NO_EXIST_PARENT_DIR_DIFF_OP,
+		PARENT_DIR_TO_BE_RM, RM_SUBDIR, REMOVED, NO_MATCH };
 
 	using UserRule = std::tuple<SecOption, RuleType, std::string>;
 
@@ -56,7 +58,7 @@ namespace AppSecPolicy
 
 	using DirInfo = std::pair<fs::path, uintmax_t>;
 
-	using FileInfo = std::tuple<std::string, std::string, uintmax_t>;
+	using FileInfo = std::tuple<std::string, std::string, std::string, uintmax_t>;
 
 	using RmRuleInfo = std::pair<std::string, SecOption>;
 

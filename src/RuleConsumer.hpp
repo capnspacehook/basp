@@ -8,7 +8,7 @@ namespace AppSecPolicy
 	class RuleConsumer
 	{
 	public:
-		explicit RuleConsumer(bool updateRules, bool tempRules) : hashRule(updateRules, tempRules)
+		explicit RuleConsumer(bool updateRules, bool tempRules) noexcept : hashRule(updateRules, tempRules)
 		{
 			consumerCount++; 
 		}

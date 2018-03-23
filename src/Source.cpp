@@ -30,11 +30,17 @@ int main(int argc, char *argv[])
 	SecPolicy secPolicy(move(parser.programName), move(parser.password), parser.updatingRules, 
 		parser.listRules, parser.listAllRules);
 
+	if (parser.showHelp)
+		parser.ShowHelp();
+
 	if (parser.changePassword)
 		secPolicy.ChangePassword();
 
 	if (parser.checkRules)
 		secPolicy.CheckRules();
+
+	if (parser.defaultPolicy)
+		secPolicy.DefaultPolicy();
 
 	if (parser.blacklisting)
 		secPolicy.CreatePolicy(parser.fileArgs, SecOption::BLACKLIST);
@@ -97,9 +103,9 @@ bool RemovePrivilege(const char* privName)
 	LUID luid;
 
 	if (!LookupPrivilegeValue(
-		nullptr,            // lookup privilege on local system
-		privName,   // privilege to lookup 
-		&luid))        // receives LUID of privilege
+		nullptr,           
+		privName,   
+		&luid))   
 	{
 		cerr << "LookupPrivilegeValue error: " << GetLastError() << '\n';
 		return false;
@@ -108,8 +114,6 @@ bool RemovePrivilege(const char* privName)
 	tp.PrivilegeCount = 1;
 	tp.Privileges[0].Luid = luid;
 	tp.Privileges[0].Attributes = SE_PRIVILEGE_REMOVED;
-
-	// Enable the privilege or disable all privileges.
 
 	if (!AdjustTokenPrivileges(
 		tokenH,
