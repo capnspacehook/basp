@@ -103,20 +103,29 @@ namespace AppSecPolicy
 		RuleType ruleType;
 
 		std::vector<std::string> executableTypes;
+
+		std::vector<std::string> scriptingDeps = { "cscript.exe", "dispex.dll", 
+			"jscript.dll", "scrobj.dll", "scrrun.dll", "vbscript.dll", "wcscript.exe", 
+			"wdispex.dll", "wjscript.dll", "wmsscript.ocx", "wscript.exe", "wscrobj.dll", 
+			"wscrrun.dll", "wshcon.dll", "wshext.dll", "wshom.ocx", "wvbscript.dll", 
+			"wwscript.exe", "wwshcon.dll", "wwshext.dll", "wwshom.ocx" };
+			
 		std::vector<std::string> bypassFiles = { "addinprocess.exe", "addinprocess32.exe",
 			"addinutil.exe", "bash.exe", "bginfo.exe", "cdb.exe", "csi.exe", "dbghost.exe",
 			"dbgsvc.exe", "dnx.exe", "fsi.exe", "fsiAnyCpu.exe", "kd.exe", "ntkd.exe",
-			"lxssmanager.dll", "msbuild.exe", "mshta.exe", "ntsd.exe", "pubprn.vbs", 
+			"lxssmanager.dll", "msbuild.exe", "mshta.exe", "ntsd.exe", "pubprn.vbs",
 			"rcsi.exe", "slmgr.vbs", "system.management.automation.dll", "te.exe",
-			"windbg.exe", "winrm.vbs", "wmic.exe"
-			/*"atbroker.exe", "bginfo.exe",
-			"cdb.exe", "cmstp.exe", "csi.exe", "dfsvc.exe", "dnx.exe", "forfiles.exe",
-			"fsi.exe", "ieexec.exe", "infdefaultinstall.exe", "installutil.exe",
-			"mavinject32.exe", "msbuild.exe", "msdt.exe", "mshta.exe", "msiexec.exe",
-			"msxsl.exe", "odbcconf.exe", "presentationhost.exe", "pubprn.vbs",
-			"rcsi.exe", "regasm.exe", "regsvcs.exe", "regsvr32.exe", "rundll32.exe",
-			"runscripthelper.exe", "slmgr.vbs", "syncappvpublishingserver.exe", "te.exe",
-			"tracker.exe" "winrm.vbs", "winword.exe", "wmic.exe", "xwizard.exe"*/ };
+			"windbg.exe", "winrm.vbs", "wmic.exe" };
+
+		//Full List
+		/*"atbroker.exe", "bginfo.exe",
+		"cdb.exe", "cmstp.exe", "csi.exe", "dfsvc.exe", "dnx.exe", "forfiles.exe",
+		"fsi.exe", "ieexec.exe", "infdefaultinstall.exe", "installutil.exe",
+		"mavinject32.exe", "msbuild.exe", "msdt.exe", "mshta.exe", "msiexec.exe",
+		"msxsl.exe", "odbcconf.exe", "presentationhost.exe", "pubprn.vbs",
+		"rcsi.exe", "regasm.exe", "regsvcs.exe", "regsvr32.exe", "rundll32.exe",
+		"runscripthelper.exe", "slmgr.vbs", "syncappvpublishingserver.exe", "te.exe",
+		"tracker.exe" "winrm.vbs", "winword.exe", "wmic.exe", "xwizard.exe"*/ 
 
 		bool justListing = true;
 		bool whitelistedBASP = false;
