@@ -37,7 +37,6 @@ namespace AppSecPolicy
 		inline bool MakeGUID();
 		inline std::vector<BYTE> convertStrToByte(std::string &str) noexcept;
 
-		
 		bool updateRules;
 		bool tempRuleCreation;
 

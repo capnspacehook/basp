@@ -105,17 +105,17 @@ namespace AppSecPolicy
 		std::vector<std::string> executableTypes;
 
 		std::vector<std::string> scriptingDeps = { "cscript.exe", "dispex.dll", 
-			"jscript.dll", "scrobj.dll", "scrrun.dll", "vbscript.dll", "wcscript.exe", 
-			"wdispex.dll", "wjscript.dll", "wmsscript.ocx", "wscript.exe", "wscrobj.dll", 
-			"wscrrun.dll", "wshcon.dll", "wshext.dll", "wshom.ocx", "wvbscript.dll", 
-			"wwscript.exe", "wwshcon.dll", "wwshext.dll", "wwshom.ocx" };
+			"jscript.dll", "jscript9.dll", "jscript9diag.dll", "scrobj.dll", "scrrun.dll", 
+			"vbscript.dll", "wcscript.exe", "wdispex.dll", "wjscript.dll", "wmsscript.ocx", 
+			"wscript.exe", "wscrobj.dll", "wscrrun.dll", "wshcon.dll", "wshext.dll", "wshom.ocx", 
+			"wvbscript.dll", "wwscript.exe", "wwshcon.dll", "wwshext.dll", "wwshom.ocx" };
 			
 		std::vector<std::string> bypassFiles = { "addinprocess.exe", "addinprocess32.exe",
 			"addinutil.exe", "bash.exe", "bginfo.exe", "cdb.exe", "csi.exe", "dbghost.exe",
 			"dbgsvc.exe", "dnx.exe", "fsi.exe", "fsiAnyCpu.exe", "kd.exe", "ntkd.exe",
 			"lxssmanager.dll", "msbuild.exe", "mshta.exe", "ntsd.exe", "pubprn.vbs",
 			"rcsi.exe", "slmgr.vbs", "system.management.automation.dll", "te.exe",
-			"windbg.exe", "winrm.vbs", "wmic.exe" };
+			"windbg.exe", "winrm.vbs" };
 
 		//Full List
 		/*"atbroker.exe", "bginfo.exe",
@@ -138,6 +138,8 @@ namespace AppSecPolicy
 
 		std::vector<UserRule> enteredRules;
 		
+		RuleDataPtr baspRule;
+
 		std::vector<RuleDataPtr> createdRulesData;
 		std::vector<RuleDataPtr> updatedRulesData;
 		std::vector<RuleDataPtr> removededRulesData;

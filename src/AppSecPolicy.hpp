@@ -20,7 +20,8 @@ namespace AppSecPolicy
 	const int LAST_MODIFIED = 6;
 	const int ITEM_DATA = 7;
 	const int SHA256_HASH = 8;
-	const int MOD_STATUS = 9;
+	const int IS_BASP_BINARY = 9;
+	const int MOD_STATUS = 10;
 
 	//FileInfo access names
 	const int RULE_PATH = 0;
@@ -53,7 +54,7 @@ namespace AppSecPolicy
 
 	using RuleData = std::tuple<SecOption, RuleType, std::string, 
 		std::string, std::string, uintmax_t, uintmax_t, 
-		std::vector<unsigned char>, std::vector<unsigned char>, 
+		std::vector<unsigned char>, std::vector<unsigned char>, bool, 
 		ModificationType>;
 
 	using DirInfo = std::pair<fs::path, uintmax_t>;

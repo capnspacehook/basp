@@ -564,7 +564,7 @@ void HashRule::WriteToRegistry(const string_view &fileName, SecOption policy)
 		hashRuleKey.Close();
 		hashRuleKey.Create(
 			HKEY_LOCAL_MACHINE,
-			policyPath + "\\SHA256",
+			policyPath + R"(\SHA256)",
 			KEY_WRITE);
 
 		hashRuleKey.SetDwordValue("HashAlg", shaHashAlg);

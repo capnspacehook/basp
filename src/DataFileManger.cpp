@@ -95,21 +95,26 @@ bool DataFileManager::OpenPolicyFile()
 				rulesLeft = static_cast<bool>(getline(iss, temp));
 			}
 
+			//read in BASP rules
+			if (rulesLeft)
+			{
+				while (rulesLeft && temp.back() == '1')
+				{
+					baspRuleInfo.emplace_back(temp + '\n');
+					rulesLeft = static_cast<bool>(getline(iss, temp));
+				}
+			}
+
 			//read in regular rules
 			if (rulesLeft)
 			{
-				ruleInfo.emplace_back(temp + '\n');
-				rulePaths.emplace_back(ruleInfo.back());
-				rulePaths.back() = rulePaths.back().substr(
-					RULE_PATH_POS, rulePaths.back().find("|{") - 4);
-
-				while (getline(iss, temp))
+				do
 				{
 					ruleInfo.emplace_back(temp + '\n');
 					rulePaths.emplace_back(ruleInfo.back());
 					rulePaths.back() = rulePaths.back().substr(
-						RULE_PATH_POS, rulePaths.back().find("|{") - 4);
-				}
+						RULE_PATH_POS, rulePaths.back().find("|{") - RULE_PATH_POS);
+				} while (getline(iss, temp));
 			}
 		}
 
@@ -179,7 +184,7 @@ string DataFileManager::GetCurrentPolicySettings() const
 		if (firstTimeRun)
 		{
 			policyKey.SetDwordValue("AuthenticodeEnabled", 0);
-			policyKey.SetDwordValue("DefaultLevel", 0);
+			policyKey.SetDwordValue("DefaultLevel", 262144);
 			policyKey.SetMultiStringValue("ExecutableTypes", executableTypes);
 			policyKey.SetDwordValue("PolicyScope", 0);
 			policyKey.SetDwordValue("TransparentEnabled", 2);
@@ -219,6 +224,25 @@ string DataFileManager::GetCurrentPolicySettings() const
 	{
 		cerr << '\n' << e.what();
 	}
+}
+
+bool DataFileManager::FindBASPRule(const std::string &path) const
+{
+	bool result = false;
+
+	if (baspRuleInfo.empty())
+		return result;
+
+	auto searchIt = lower_bound(baspRuleInfo.begin(), baspRuleInfo.end(), path,
+		[](const string &lhs, const string &rhs)
+		{
+			return lhs.substr(RULE_PATH_POS, lhs.find("|{") - RULE_PATH_POS) < rhs;
+		});
+
+	if (searchIt != baspRuleInfo.end() && !(path < *searchIt))
+		result = true;
+
+	return result;
 }
 
 //searches list of created rules, returns status of search
@@ -563,6 +587,10 @@ RuleData DataFileManager::StringToRuleData(const string& ruleStr)
 	for (const auto &SHAbyte : hash)
 		get<SHA256_HASH>(ruleData).emplace_back(SHAbyte);
 
+	getline(iss, temp, '|');
+	get<IS_BASP_BINARY>(ruleData) = static_cast<bool>(
+		temp.back() - '0');
+
 	return ruleData;
 }
 
@@ -586,7 +614,8 @@ string DataFileManager::RuleDataToString(const RuleData& ruleData)
 		get<FILE_LOCATION>(ruleData) + '|' + get<RULE_GUID>(ruleData) + '|' +
 		get<FRIENDLY_NAME>(ruleData) + '|' + to_string(get<ITEM_SIZE>(ruleData)) + '|' + 
 		to_string(get<LAST_MODIFIED>(ruleData)) + '|' +
-		hashToStr(get<ITEM_DATA>(ruleData)) + '|' + hashToStr(get<SHA256_HASH>(ruleData)) + '\n';
+		hashToStr(get<ITEM_DATA>(ruleData)) + '|' + hashToStr(get<SHA256_HASH>(ruleData)) + '|' +
+		to_string(get<IS_BASP_BINARY>(ruleData)) + '\n';
 }
 
 void DataFileManager::SortRules()
@@ -835,6 +864,11 @@ void DataFileManager::UpdateUserRules(const vector<UserRule> &ruleNames, bool ru
 	}
 }
 
+void DataFileManager::AddBASPRule(const RuleData &baspRule)
+{
+	baspRuleInfo.emplace_back(RuleDataToString(baspRule));
+}
+
 void DataFileManager::InsertNewEntries(const vector<RuleDataPtr>& ruleData)
 {
 	try
@@ -846,7 +880,7 @@ void DataFileManager::InsertNewEntries(const vector<RuleDataPtr>& ruleData)
 			ruleInfo.emplace_back(RuleDataToString(*rule));
 			rulePaths.emplace_back(ruleInfo.back());
 			rulePaths.back() = rulePaths.back().substr(
-				RULE_PATH_POS, rulePaths.back().find("|{") - 4);
+				RULE_PATH_POS, rulePaths.back().find("|{") - RULE_PATH_POS);
 		}
 	}
 	catch (const exception &e)
@@ -953,7 +987,9 @@ void DataFileManager::WriteChanges()
 		else 
 			*policyData += line + '#' + '\n';
 	}
-		
+	
+	for (const auto& line : baspRuleInfo)
+		*policyData += line;
 
 	for (const auto& line : ruleInfo)
 		*policyData += line;

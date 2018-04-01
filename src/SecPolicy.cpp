@@ -669,7 +669,6 @@ void SecPolicy::CheckGlobalSettings()
 				static_cast<DWORD>(globalSettings[TRANSPARENT_ENABLED] - '0'));
 		}
 
-		RuleData ruleData;
 		auto exePath = [=]()
 		{
 			auto temp = fs::current_path().string() + '\\' + programName;
@@ -679,9 +678,10 @@ void SecPolicy::CheckGlobalSettings()
 			return temp;
 		} ();
 
-		auto result = dataFileMan.FindRule(SecOption::WHITELIST, RuleType::HASHRULE, exePath, ruleData);
-		if (result != RuleFindResult::EXACT_MATCH)
+		if (!dataFileMan.FindBASPRule(exePath))
 		{
+			RuleData ruleData;
+
 			cout << "\nBASP isn't explicitly allowed, whitelisting now...";
 
 			auto tempPath = fs::temp_directory_path().string() + '\\'  + programName;
@@ -690,19 +690,20 @@ void SecPolicy::CheckGlobalSettings()
 			get<SEC_OPTION>(ruleData) = SecOption::WHITELIST;
 			get<FILE_LOCATION>(ruleData) = tempPath;
 			get<ITEM_SIZE>(ruleData) = fs::file_size(tempPath);
-			createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
+			get<IS_BASP_BINARY>(ruleData) = true;
+			baspRule = make_shared<RuleData>(ruleData);
 
 			HashRule hashRule(false, false);
-			hashRule.CreateNewHashRule(createdRulesData.back());
+			hashRule.CreateNewHashRule(baspRule);
 
-			enteredRules.emplace_back(SecOption::WHITELIST, RuleType::HASHRULE, exePath);
-			get<FILE_LOCATION>(*createdRulesData.back()) = exePath;
+			get<FILE_LOCATION>(*baspRule) = exePath;
 			fs::remove(tempPath);
 
 			cout << "done\n";
 
 			whitelistedBASP = true;
-			ApplyChanges(true);
+			ApplyChanges(false);
+			createdRules++;
 		}
 	}
 	catch (const RegException &e)
@@ -765,6 +766,7 @@ void SecPolicy::ProcessRules()
 
 						get<FILE_LOCATION>(ruleData) = filePath;
 						get<ITEM_SIZE>(ruleData) = fileSize;
+						get<IS_BASP_BINARY>(ruleData) = false;
 						createdRulesData.emplace_back(make_shared<RuleData>(ruleData));
 
 						ruleQueue.enqueue(
@@ -866,7 +868,7 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 
 		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
 		
-		Sleep(1000);
+		Sleep(500);
 
 		executableTypes.pop_back();
 		policySettings.SetMultiStringValue("ExecutableTypes", executableTypes);
@@ -877,6 +879,9 @@ void SecPolicy::ApplyChanges(bool updateSettings)
 		if (updateSettings && !tempRuleCreation)
 		{
 			dataFileMan.UpdateUserRules(enteredRules, ruleRemoval);
+
+			if (whitelistedBASP)
+				dataFileMan.AddBASPRule(*baspRule);
 
 			if (createdRules)
 				dataFileMan.InsertNewEntries(createdRulesData);

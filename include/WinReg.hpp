@@ -61,6 +61,7 @@
 #include <string>           // std::string
 #include <utility>          // std::swap, std::pair
 #include <vector>           // std::vector
+#include <string_view>
 
 
 namespace winreg
@@ -205,6 +206,7 @@ namespace winreg
 		void SetDwordValue(const std::string& valueName, DWORD data);
 		void SetQwordValue(const std::string& valueName, const ULONGLONG& data);
 		void SetStringValue(const std::string& valueName, const std::string& data);
+		void SetStringValueWithSV(const std::string& valueName, const std::string_view& data);
 		void SetExpandStringValue(const std::string& valueName, const std::string& data);
 		void SetMultiStringValue(const std::string& valueName, const std::vector<std::string>& data);
 		void SetBinaryValue(const std::string& valueName, const std::vector<BYTE>& data);
@@ -249,7 +251,9 @@ namespace winreg
 		// Enumerate the values under the registry key, using RegEnumValue.
 		// Returns a vector of pairs: In each pair, the string is the value name, 
 		// the DWORD is the value type.
-		std::vector<std::pair<std::string, DWORD>> EnumValues();
+		std::vector<std::pair<std::string, DWORD>> EnumValuesAndTypes();
+
+		std::vector<std::string> EnumValues();
 
 		// Enumerate the number of subkeys
 		DWORD EnumNumOfValues();
@@ -568,7 +572,7 @@ namespace winreg
 		{
 			keyExists = false;
 		}
-		if (retCode != ERROR_SUCCESS)
+		else if (retCode != ERROR_SUCCESS)
 		{
 			throw RegException{ "RegOpenKeyEx failed.", retCode };
 		}
@@ -634,6 +638,28 @@ namespace winreg
 			0, // reserved
 			REG_SZ,
 			reinterpret_cast<const BYTE*>(data.c_str()),
+			dataSize
+		);
+		if (retCode != ERROR_SUCCESS)
+		{
+			throw RegException{ "Cannot write string value: RegSetValueEx failed.", retCode };
+		}
+	}
+
+
+	inline void RegKey::SetStringValueWithSV(const std::string& valueName, const std::string_view& data)
+	{
+		_ASSERTE(IsValid());
+
+		// String size including the terminating NUL, in bytes
+		const DWORD dataSize = static_cast<DWORD>((data.length() + 1) * sizeof(char));
+
+		LONG retCode = ::RegSetValueEx(
+			m_hKey,
+			valueName.c_str(),
+			0, // reserved
+			REG_SZ,
+			reinterpret_cast<const BYTE*>(data.data()),
 			dataSize
 		);
 		if (retCode != ERROR_SUCCESS)
@@ -1172,7 +1198,7 @@ namespace winreg
 	}
 
 
-	inline std::vector<std::pair<std::string, DWORD>> RegKey::EnumValues()
+	inline std::vector<std::pair<std::string, DWORD>> RegKey::EnumValuesAndTypes()
 	{
 		_ASSERTE(IsValid());
 
@@ -1241,6 +1267,79 @@ namespace winreg
 			valueInfo.push_back(
 				std::make_pair(std::string{ nameBuffer.get(), valueNameLen }, valueType)
 			);
+		}
+
+		return valueInfo;
+	}
+
+
+	inline std::vector<std::string> RegKey::EnumValues()
+	{
+		_ASSERTE(IsValid());
+
+		// Get useful enumeration info, like the total number of values
+		// and the maximum length of the value names
+		DWORD valueCount{};
+		DWORD maxValueNameLen{};
+		LONG retCode = ::RegQueryInfoKey(
+			m_hKey,
+			nullptr,    // no user-defined class
+			nullptr,    // no user-defined class size
+			nullptr,    // reserved
+			nullptr,    // no subkey count
+			nullptr,    // no subkey max length
+			nullptr,    // no subkey class length
+			&valueCount,
+			&maxValueNameLen,
+			nullptr,    // no max value length
+			nullptr,    // no security descriptor
+			nullptr     // no last write time
+		);
+		if (retCode != ERROR_SUCCESS)
+		{
+			throw RegException{
+				"RegQueryInfoKey failed while preparing for value enumeration.",
+				retCode
+			};
+		}
+
+		// NOTE: According to the MSDN documentation, the size returned for value name max length
+		// does *not* include the terminating NUL, so let's add +1 to take it into account
+		// when I allocate the buffer for reading value names.
+		maxValueNameLen++;
+
+		// Preallocate a buffer for the value names
+		auto nameBuffer = std::make_unique<char[]>(maxValueNameLen);
+
+		// The value names and types will be stored here
+		std::vector<std::string> valueInfo;
+
+		// Enumerate all the values
+		for (DWORD index = 0; index < valueCount; index++)
+		{
+			// Get the name and the type of the current value
+			DWORD valueNameLen = maxValueNameLen;
+			DWORD valueType{};
+			retCode = ::RegEnumValue(
+				m_hKey,
+				index,
+				nameBuffer.get(),
+				&valueNameLen,
+				nullptr,    // reserved
+				&valueType,
+				nullptr,    // no data
+				nullptr     // no data size
+			);
+			if (retCode != ERROR_SUCCESS)
+			{
+				throw RegException{ "Cannot enumerate values: RegEnumValue failed.", retCode };
+			}
+
+			// On success, the RegEnumValue API writes the length of the
+			// value name in the valueNameLen output parameter 
+			// (not including the terminating NUL).
+			// So we can build a string based on that.
+			valueInfo.push_back(std::string{ nameBuffer.get(), valueNameLen });
 		}
 
 		return valueInfo;

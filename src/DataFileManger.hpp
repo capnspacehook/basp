@@ -74,9 +74,11 @@ namespace AppSecPolicy
 		void SetNewPassword(std::string&&);
 		RuleFindResult FindRule(SecOption, RuleType,
 			const std::string&, RuleData&) const;
+		bool FindBASPRule(const std::string&) const;
 		std::vector<RuleData> FindRulesInDir(const std::string&) const;
 		std::vector<RuleData> GetDeletedFiles(const std::vector<RuleData>&);
 		void UpdateUserRules(const std::vector<UserRule>&, bool);
+		void AddBASPRule(const RuleData&);
 		void InsertNewEntries(const std::vector<RuleDataPtr>&);
 		void UpdateEntries(SecOption, const std::vector<RuleDataPtr>&);
 		void RemoveDeletedFiles(const std::vector<RuleData>&);
@@ -110,6 +112,8 @@ namespace AppSecPolicy
 		ProtectedPtr<std::string, StringSerializer> policyData;
 		
 		std::string globalPolicySettings;
+
+		std::vector<std::string> baspRuleInfo;
 
 		std::vector<std::string> userRuleInfo;			//dirs the user entered to do work on
 		std::vector<std::string_view> userRulePaths;	//extracted paths from userRuleInfo
