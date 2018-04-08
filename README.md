@@ -28,11 +28,11 @@ If you don't trust the executable, and you shouldn't (you don't know who I am mo
 ## Credits
 
 Crypto++  
-Compilation Copyright (c) 1995-2016 by Wei Dai  
+Compilation Copyright (c) 1995-2018 by Wei Dai  
 https://github.com/weidai11/cryptopp
 
 ConcurrentQueue  
-Copyright (c) 2013-2016 by Cameron Desrochers  
+Copyright (c) 2013-2018 by Cameron Desrochers  
 https://github.com/cameron314/concurrentqueue
 
 WinReg  
